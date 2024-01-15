@@ -257,14 +257,9 @@ get_intersect_and_distinct_words <- function(text_1, text_2) {
   return(words)
 }
 
-cleanup_files <- function() {
+delete_files_in_www <- function() {
   files_to_remove <- list.files("www", full.names = TRUE)
   
-  # Filter out the files you want to keep
-  files_to_keep <- files_to_remove[files_to_remove %in% c("www/ian.jpg")]
-  
-  # Remove all other files
-  files_to_remove <- setdiff(files_to_remove, files_to_keep)
   if (length(files_to_remove) > 0) {
     file.remove(files_to_remove)
   }
