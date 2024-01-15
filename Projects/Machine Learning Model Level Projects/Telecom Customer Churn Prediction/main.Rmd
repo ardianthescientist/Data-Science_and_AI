@@ -1,0 +1,244 @@
+---
+title: "Telecom Customer Churn Prediction with Machine Learning"
+author: 'Ardian the Great'
+date: "`r format(Sys.Date(), '%B %dth, %Y')`"
+output:
+  html_document:
+    theme: sandstone
+    css: style.css
+    highlight: zenburn
+    df_print: paged
+    toc: true
+    toc_float: true
+---
+This machine learning project revolves around the essential task of predicting customer churn. The project's primary objective is to build a strong predictive model capable of identifying customers who are likely to churn. By effectively recognizing potential churners, the model aims to optimize decision-making in customer retention strategies, reduce business risks, and contribute to more informed actions in the field of customer relationship management.
+
+These are some valuable business advantages that are offered by the result of this project:
+
+> * `Enhanced Risk Management`: Accurate identification of potential churners minimizes the risk of revenue loss and enables proactive intervention strategies.
+> * `Personalized Customer Engagement`: Predicting churn allows for targeted retention efforts, fostering stronger customer relationships and loyalty.
+> * `Operational Efficiency`: Automated churn prediction streamlines resource allocation, reducing manual efforts and operational costs.
+> * `Maximized Customer Lifetime Value`: Retaining high-value customers through predictive modeling increases their long-term contribution to the business.
+> * `Financial Stability`: Minimizing customer attrition ensures a steady revenue stream and enhances overall financial stability.
+> * `Data-Driven Decision-Making`: Churn prediction provides valuable insights into customer behavior, enabling informed strategic decisions and improvements.
+> * `Competitive Advantage`: Effective churn management enhances the company's reputation for customer-centric practices, differentiating it from competitors.
+> * `Optimized Marketing Strategies`: Accurate churn predictions lead to targeted marketing campaigns, maximizing their impact and minimizing waste.
+> * `Enhanced Profitability`: Reduced churn rates translate to increased customer retention, contributing to improved financial performance and profitability.
+> * `Continuous Improvement`: Ongoing analysis of churn patterns enables the refinement of retention strategies, adapting to evolving customer preferences.
+> 
+> In short, save the business more time, save the business more money, provide the business more insight, and make the business more money.
+
+Now, let's jump into the coding process!
+
+## **Data Pre-processing**
+### Import used libraries
+```{r message=FALSE}
+library(dplyr)
+library(inspectdf)
+library(caret)
+library(Ardian) # My presonal package
+library(ggplot2)
+library(GGally)
+library(xgboost)
+library(randomForest)
+```
+
+### Read the data
+```{r}
+churn <- read.csv("Telco Customer Churn.csv")
+```
+
+### Inspect the data {.tabset}
+#### Top 6 rows
+```{r}
+churn %>% head()
+```
+
+#### Bottom 6 rows
+```{r}
+churn %>% tail()
+```
+
+### Check duplicated rows
+```{r}
+churn %>% duplicated() %>% any()
+```
+> There's no duplicated row
+
+### Check missing values
+```{r}
+churn %>% anyNA()
+```
+> There are missing values. Let's inspect the missing values!
+
+### Inspect missing values
+```{r}
+churn %>% is.na() %>% colSums()
+```
+> There are only 11 rows that has a missing value. Let's remove those rows!
+
+### Handle missing values
+```{r}
+churn <- churn %>% filter(complete.cases(.))
+
+churn %>% is.na() %>% colSums()
+```
+> Cool! We are now free of missing values!
+
+### Inspect data structure
+```{r}
+churn %>% glimpse()
+```
+> We need to do 2 things:
+>
+> 1. Remove `customerID` column
+> 2. Parse categorical columns into factor
+
+### Remove unneeded columns
+```{r}
+churn <- churn %>% select(-customerID)
+```
+
+### Parse categorical columns
+```{r}
+churn <- churn %>% 
+  mutate_if(is.character, as.factor) %>% 
+  mutate(SeniorCitizen = as.factor(SeniorCitizen))
+
+churn %>% glimpse()
+```
+> Cool. All categorical columns are now in the correct data type
+
+## **Exploratory Data Analysis & Feature Selection**
+### Check target variable proportion
+```{r}
+churn$Churn %>% table() %>% barplot()
+```
+
+> The proportion of the target variable is imbalanced. Let's upsample the data!
+
+### Upsample data
+```{r}
+up_churn <- upSample(x = churn %>% select(-Churn),
+                     y = churn$Churn,
+                     yname = "Churn")
+
+up_churn$Churn %>% table() %>% barplot()
+```
+
+> Cool. The target proportion is now balanced!
+
+### Inspect categorical columns distributions
+```{r}
+up_churn %>% inspect_cat() %>% show_plot()
+```
+
+> Cool. All categorical columns are distributed normally
+
+### Inspect numerical columns distributions
+```{r}
+plotNumericalDistribution(up_churn) # This function is from my personal package
+```
+
+> Cool. All numerical columns are distributed normally
+
+### Numerical Feature Correlations
+```{r warning=FALSE, message=FALSE}
+up_churn %>% ggcorr(label = T)
+```
+
+> TotalCharges is highly correlated with other numerical columns. We'll remove it
+
+### Remove highly correlated columns
+```{r message=FALSE, warning=FALSE}
+up_churn <- up_churn %>% select(-TotalCharges)
+
+up_churn %>% ggcorr(label = T)
+```
+
+> Cool! Now there is no correlated column 
+
+## **Cross Validation**
+### Set training indices
+Because we don't have a lot of records, we will set the training proportion to 85%
+```{r}
+set.seed(1)
+
+indices <- createDataPartition(y = up_churn$Churn,
+                               p = 0.85,
+                               list = F)
+```
+
+### Split train & test
+```{r}
+train_data <- up_churn[indices, ]
+test_data <- up_churn[-indices, ]
+
+X_train <- train_data %>% select(-Churn)
+X_test <- test_data %>% select(-Churn)
+
+y_train <- train_data$Churn
+y_test <- test_data$Churn
+```
+
+## **Model Fitting & Evaluation**
+### Random Forest Algorithm
+I chose the Random Forest algorithm. Because, in cases like predicting human actions, using a simple one rule algorithm may not suffice. The Random Forest algorithm, being an ensemble method which combine multiple rules (trees), is well-suited for such scenarios as it doesn't solely rely on a single rule.
+```{r}
+model_rf <- randomForest(formula =Churn ~ .,
+                         data = train_data,
+                         ntree = 505,
+                         importance = T)
+```
+### Random Forest Model Evaluation
+```{r}
+pred_rf <- predict(model_rf, X_test)
+
+confusionMatrix(pred_rf, y_test, positive = "Yes")
+```
+> The metric that we're gonna be focusing on is `Sensitivity`. Why? because we want to minimize the case where customers who are likely to churn are predicted as not likely to churn.
+>
+> The random forest model achieved an overall `Accuracy of 89%`, with a `Sensitivity of 95%`. This high sensitivity indicates that the model is effective at correctly identifying customers who are likely to churn, which is crucial for proactively addressing potential churn and retaining valuable customers.
+>
+> We'll tune the model and see if we could increase it's performance!
+
+## **Model Tuning & Selection**
+We're gonna tune the model by implementing K-Fold Cross Validation with 3 repetitions of 5 folds
+```{r}
+ctrl <- trainControl(
+  method = "repeatedcv",      
+  number = 5,    
+  repeats = 3
+)
+
+model_rf_tunned <- train(
+  Churn ~ .,
+  data = train_data,
+  method = "rf",      
+  trControl = ctrl
+)
+```
+### Random Forest Tuned Model Evaluation
+```{r}
+pred_rf_tunned <- predict(model_rf_tunned, X_test)
+
+confusionMatrix(pred_rf_tunned, y_test, positive = "Yes")
+```
+> The performance increased!
+>
+> The tuned random forest model achieved a higher `Accuracy of 90%` and `Sensitivity of 96%` indicating stronger ability to accurately identify customers who are likely to churn, making it the winner model of this project!
+
+## **AUC of ROC**
+My way of explaining the AUC of ROC score is that it reflects the level of certainty our model has in its predictions. A high AUC of ROC score indicates that the model is very confident and sure of its predictions. As people who use the model, we want the model to be highly confident in its predictions since we rely on it for making decisions. We don’t want a model that isn’t sure or confident about its predictions. This is why the AUC or ROC score is a crucial measure to determine if the model is prepared for practical use or not.
+```{r}
+pred_rf_tunned_raw <- predict(model_rf_tunned, X_test, type = "prob")
+
+plotROC(pred_rf_tunned_raw[, 2], ifelse(y_test == "Yes", 1, 0)) # This function is from my personal package
+```
+
+> Magnificent. Why? Because the closer the AUC to 1 the more confident the model is at detecting which customers are churning and which are not
+
+## **Conclusion**
+> In conclusion, the generated model is truly outstanding, boasting an `Accuracy of 90%` and `Sensitivity of 96%`. The model exhibits exceptional accuracy, high sensitivity, and strong specificity, signifying its prowess in effectively identifying customers who are likely to churn, while also performs well in identifying customers who are not likely to churn.
+>
+> Furthermore, the impressive `AUC of ROC score of 0.96` serves as an additional testament to the model’s readiness for practical deployment. The near-perfect AUC of ROC score indicates the model’s high confidence in distinguishing between customers who are likely to churn and who are not. With its remarkable performance across various metrics, the model has proven itself to be well-prepared and capable of reliable utilization and real-world applications.

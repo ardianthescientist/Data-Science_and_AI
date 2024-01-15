@@ -1,0 +1,553 @@
+---
+title: 'Time Arrival Estimation with Deep Learning'
+author: 'Ardian the Great'
+date: "`r format(Sys.Date(), '%B %d, %Y')`"
+output:
+  html_document:
+    theme: sandstone
+    css: style.css
+    highlight: zenburn
+    df_print: paged
+    toc: true
+    toc_float: true
+---
+
+## **Introduction**
+This project is a continuation of my previous project titled "Time Arrival Estimation with Machine Learning." In this iteration, I aim to enhance the predictive model developed earlier by leveraging advanced machine learning algorithms and deep learning architectures. This project revolves around analyzing NYC taxi trips and their respective durations. The primary objective is to construct an effective machine learning model capable of predicting trip durations. By achieving accurate predictions of trip durations, we can obtain reliable estimations for the expected arrival times of trips.
+
+Developing an effective machine learning model for time arrival estimation offers several significant business advantages:
+
+> 1. `Better Customer Experience`: Predicting trip durations helps passengers plan better, reducing wait times and travel uncertainty
+> 2. `Efficient Dispatch and Routing`: Accurate predictions optimize taxi assignments and routes, reducing idle time and improving fleet use
+> 3. `Quality Service`: Reliable estimates reduce rushed driving, leading to safer and more comfortable rides
+> 4. `Cost Efficiency`: Optimized operations save fuel, vehicle wear, and overall expenses
+> 5. `Competitive Edge`: Reliable predictions attract customers and boost loyalty, setting you apart in the market
+> 6. `Smart Decision-Making`: Data analysis unveils peak times, routes, and demand patterns for informed choices
+> 7. `Partnerships and Integration`: Accurate predictions open doors for collaborations with other services
+> 8. `Effective Marketing`: Promote precise arrival times to attract more users and repeat business
+> 9. `Efficient Workforce`: Predictive insights aid in allocating drivers as per demand, reducing downtime
+> 10. `Data Value`: Monetize data by selling insights on traffic patterns and commuter behavior.
+
+## **Data Pre-processing**
+### Import used libraries
+```{r message=FALSE}
+library(dplyr)
+library(lubridate)
+library(Ardian) # My own package
+library(GGally)
+library(ggplot2)
+library(caret)
+library(randomForest)
+library(MLmetrics)
+library(tensorflow)
+library(keras)
+library(class)
+library(FNN)
+library(car)
+```
+
+### Read the data
+```{r}
+trip_raw <- read.csv("datasets/taxi_tripdata.csv")
+```
+
+### Inspect the data {.tabset}
+#### Top 6 rows
+```{r}
+trip_raw %>% head()
+```
+
+#### Bottom 6 rows
+```{r}
+trip_raw %>% tail()
+```
+
+### Check duplicated rows
+```{r}
+trip_raw %>% anyDuplicated()
+```
+> There's no duplicated row
+
+### Check missing values
+```{r}
+trip_raw %>% anyNA()
+```
+> There are missing values. Let's check which columns!
+
+### Check missing values by columns
+```{r}
+trip_raw %>% is.na() %>% colSums()
+```
+> I don't need these columns, so I'll just remove them
+
+### Remove unneeded columns
+```{r}
+trip <- trip_raw %>%
+  select_if(~ all(!is.na(.))) %>% 
+  select(-extra,
+         -mta_tax,
+         -tip_amount,
+         -improvement_surcharge,
+         -total_amount,
+         -store_and_fwd_flag,
+         -tolls_amount)
+
+trip %>% tail()
+```
+
+### Check missing values again
+```{r}
+trip %>% anyNA()
+```
+> Good, the data is now free of missing values!
+
+### Parse datetime columns
+I'm gonna parse *lpep_pickup_datetime* and *lpep_dropoff_datetime* to datetime and then rename them
+```{r}
+trip <- trip %>% 
+  mutate_if(is.character, ymd_hms) %>% 
+  rename(PU_datetime = lpep_pickup_datetime,
+         DO_datetime = lpep_dropoff_datetime)
+
+trip %>% head()
+```
+
+### Parse categorical columns
+I'm gonna parse *PULocationID* and *DOLocationID* to factor
+```{r}
+trip <- trip %>% 
+  mutate_at(vars(PULocationID, DOLocationID), as.factor)
+```
+
+### Check data structures
+```{r}
+trip %>% glimpse()
+```
+
+### Check the data summary
+By looking at the data summary, I can detect weird records or people may call them anomalies
+```{r}
+trip %>% summary()
+```
+> There are 3 anomalies:
+>
+> 1. `trip_distance == 0`. Who the hell order taxi to stay in the same place?
+> 2. `trip_distance == 260517.93`. Did the taxi fly?
+> 3. `fare_amount < 0`. Did he/she steal the driver's money?
+
+### Handle anomalies
+```{r}
+trip <- trip %>% 
+  filter(trip_distance >= 0.1,
+         fare_amount >= 1) %>% 
+  killOutliers(trip_distance) # This function is from my package
+
+trip %>% summary()
+```
+> Cool, looking beautiful
+
+## **Feature Enginnering**
+### Extract useful information from the datetime columns
+There are 3 useful informations I'm gonna extract:
+
+1. `trip_duration`: The minute difference between *PU_datetime* and *DO_datetime*
+2. `hour`: the hour of the *PU_datetime*
+3. `is_weekend`: Is the *PU_datetime* in weekend or not
+```{r}
+trip <- trip %>% 
+  mutate(trip_duration = as.numeric(round(difftime(DO_datetime, PU_datetime, units = "mins"), 2)),
+         is_weekend = as.factor(ifelse(wday(PU_datetime) > 5, 1, 0)),
+         hour = as.factor(hour(PU_datetime)))
+
+trip %>% head()
+```
+> `trip_duration` is gonna be the **target variable**
+
+### Check features correlations
+```{r warning=FALSE}
+ggcorr(trip, label = T)
+```
+
+> I will remove *fare_amount* because it's highly correlated to *trip_distance*. Why do I choose to remove *fare_amount* instead of *trip_distance*? Because as I know, *fare_amount* is a dependent variable
+
+## **Feature selection**
+### Remove unused columns
+I'll remove the datetime columns and *fare_amount*
+```{r}
+trip <- trip %>% select(-PU_datetime,
+                        -DO_datetime,
+                        -fare_amount)
+
+trip %>% head()
+```
+
+### Check target variable summary
+By looking at the target summary, I can detect weird records or people may call them anomalies
+```{r}
+trip$trip_duration %>% summary()
+```
+> There are 2 anomalies:
+>
+> 1. `trip_duration == 0`. Did they teleport?
+> 2. `trip_duration == 1438.77`. Were they dragging the car?
+
+### Handle target anomalies
+```{r}
+trip <- trip %>% 
+  killOutliers(trip_duration) %>%
+  filter(trip_duration >= 1)
+```
+
+### Check target variable's summary again
+```{r}
+trip$trip_duration %>% summary()
+```
+> Perfecto
+
+### Average Trip Duration
+It would be great if I could aggregate to get and use the average trip_duration of each POLocationID to DOLocationID as a feature with this code below:
+```{r message=FALSE}
+trip %>% 
+  group_by(PULocationID, DOLocationID) %>% 
+  summarise(average_duration = mean(trip_duration))
+```
+> But unfortunately, I don't have enough data :(
+
+## **Exploratory Data Analysis** {.tabset}
+### Distribution of Trip Duration
+```{r}
+ggplot(trip, aes(x = trip_duration)) +
+  geom_density(fill = "#56b4fc", col = "white", alpha = 0.5) +
+  labs(x = "Trip Duration",
+       y = "Density",
+       title = "Distribution of Trip Duration") +
+  theme_minimal()
+```
+
+> The trip duration is distributed normally and mostly around 8 minutes
+
+### Distribution of Trip Distance
+```{r}
+ggplot(trip, aes(x = trip_distance)) +
+  geom_density(fill = "#56b4fc", col = "white", alpha = 0.5) +
+  labs(x = "Trip Distance",
+       y = "Density",
+       title = "Distribution of Trip Distance") +
+  theme_minimal()
+```
+
+> Trip distance is also distributed normally and mostly around 1.75 KM
+
+### Trip Distance & Duration Relationship per Hour Range
+```{r}
+plot_data <- trip %>% mutate(hour_range = getHourRange(as.integer(hour))) # getHourRange() is from personal package my package
+
+ggplot(plot_data, aes(x = trip_distance, y = trip_duration, color = trip_duration)) +
+  geom_point() +
+  labs(x = "Trip Distance",
+       y = "Trip Duration",
+       title = "Trip Distance & Duration Relationship per Hour Range",
+       color = "Is Weekend") +
+  theme_gray() +
+  facet_grid(. ~ hour_range) +
+  theme(legend.position = "none")
+```
+
+> They are mostly the same in terms of the the relationship pattern
+
+### Number of Trips by Hour
+```{r message = FALSE}
+plot_data <- trip %>% 
+  group_by(hour, is_weekend) %>% 
+  summarise(count = n()) %>%
+  ungroup()
+
+ggplot(plot_data, aes(x = hour, y = count)) +
+  geom_bar(stat = "identity", aes(fill = count), show.legend = F) + 
+  labs(x = "Hour of Day",
+       y = "Trips",
+       title = "Number of Trips by Hour") +
+  facet_grid(. ~ is_weekend,
+             labeller = labeller(is_weekend = c("0" = "Weekday", "1" = "Weekend"))) +
+  theme_minimal()
+```
+
+> Number of trips are high around 8 to 18 o'clock
+
+### Average Trip Duration per Distance by hour
+This will give us insight into which hours experience high traffic congestion the most
+```{r message=FALSE}
+plot_data <- trip %>% 
+  group_by(hour, is_weekend) %>% 
+  summarise(ratio = mean(trip_duration/trip_distance)) %>%
+  ungroup()
+
+ggplot(plot_data, aes(x = hour, y = ratio)) +
+  geom_bar(stat = "identity", aes(fill = ratio), show.legend = F) + 
+  labs(x = "Hour of Day",
+       y = "Trip Duration per Distance",
+       title = "Trip Duration per Distance by Hour") +
+  facet_grid(. ~ is_weekend,
+             labeller = labeller(is_weekend = c("0" = "Weekday", "1" = "Weekend"))) +
+  theme_minimal()
+```
+
+> Traffic congestion mostly occur between 13 and 18 o'clock
+
+## **Cross Validation**
+### Set random seed and training indices
+```{r}
+set.seed(1)
+
+indices <- createDataPartition(trip$trip_duration,
+                               p = 0.8,
+                               list = FALSE)
+```
+
+### Train test split
+```{r}
+train_data <- trip[indices, ] %>% select(-PULocationID,
+                                         -DOLocationID)
+test_data <- trip[-indices, ] %>% select(-PULocationID,
+                                         -DOLocationID)
+
+X_train <- train_data %>% select(-trip_duration)
+y_train <- train_data$trip_duration
+
+X_test <- test_data %>% select(-trip_duration)
+y_test <- test_data$trip_duration
+```
+
+## **Model Fitting**
+### Linear Regression Algorithm
+```{r}
+model_lm <- lm(formula = trip_duration ~ .,
+               data = train_data)
+
+model_lm %>% summary()
+```
+
+### Linear Regression Model Evaluation
+```{r}
+pred_lm <- predict(model_lm, X_test)
+
+getRegressionErrors(pred_lm, y_test) # This function is from my personal package
+```
+> Not so good. But don't worry! I'll try another algorithm
+
+### Random Forest Algorithm
+```{r}
+model_rf <- randomForest(x = X_train,
+                         y = y_train,
+                         ntree = 55,
+                         mtry = ncol(X_train),
+                         importance = T)
+
+model_rf
+```
+
+### Random Forest Model Evaluation
+```{r}
+pred_rf <- predict(model_rf, X_test)
+
+getRegressionErrors(pred_rf, y_test)
+```
+> It's way better than my linear regression model in terms of MAPE. But, I'll try using Feed-Forward Neural Network Architecture
+
+## **Deep Learning**
+### One Hot Encoding
+```{r}
+factor_columns <- c("PULocationID", "DOLocationID", "is_weekend", "hour")
+trip_encoded <- oneHotEncode(trip, factor_columns) %>% as.matrix() # oneHotEncode() is from my personal package
+
+X_train <- trip_encoded[indices, -which(colnames(trip_encoded) == 'trip_duration')]
+y_train <- trip_encoded[indices, "trip_duration"]
+
+X_test <- trip_encoded[-indices, -which(colnames(trip_encoded) == 'trip_duration')]
+y_test <- trip_encoded[-indices, "trip_duration"]
+```
+
+### Feed-Forward Neural Network
+```{r warning=FALSE, message=FALSE}
+model_fnn <- keras_model_sequential(name = "ETA-Predictor_NYC-Taxi_1.0.0") %>%
+  layer_dense(units = 256,
+              activation = "relu",
+              input_shape = ncol(X_train),
+              name = "hidden_1") %>%
+  layer_dense(units = 128,
+              activation = "relu",
+              name = "hidden_2") %>%
+  layer_dense(units = 64,
+              activation = "relu",
+              name = "hidden_3") %>%
+  layer_dense(units = 1,
+              activation = "linear",
+              name = "output")
+
+model_fnn %>% compile(
+  loss = "mean_squared_error",
+  optimizer = optimizer_adam(learning_rate = 0.01),
+  metrics = "mean_absolute_percentage_error" # I'm gonna use MAPE as the metric because the trip_duration is never gonna be zero
+)
+
+history <- model_fnn %>% fit(
+  X_train, y_train,
+  epochs = 18,
+  batch_size = 8192,
+  validation_data = list(X_test, y_test),
+  verbose = 1
+)
+
+model_fnn
+```
+
+### Feed-Forward Neural Network Model Evaluation
+```{r}
+pred_fnn <- predict(model_fnn, X_test) %>% as.vector()
+
+getRegressionErrors(pred_fnn, y_test)
+```
+> Alhamdulillah! It's way better than my random forest model in terms of all metrics! But, I'll try and see how KNN algorithm performs
+
+## **Further Model Fitting**
+### K-Nearest Neighbour Regressor Algorithm
+```{r}
+pred_knn_train <- knn.reg(train = X_train,
+                          test = X_train,
+                          y = y_train,
+                          k = 5)$pred
+
+pred_knn_test <- knn.reg(train = X_train,
+                         test = X_test,
+                         y = y_train,
+                         k = 5)$pred
+```
+
+### K-Nearest Neighbour Evaluation
+```{r}
+getRegressionErrors(pred_knn_test, y_test)
+```
+> It's cool, but my FNN model is better. What if I combine them?
+
+## **Model Combining**
+I will try combining KNN and FNN model, I will add the predicted value from KNN as a feature and see how the FNN performs
+
+### Add KNN prediction as a feature
+```{r}
+X_train <- cbind(X_train, pred_knn = pred_knn_train)
+X_test <- cbind(X_test, pred_knn = pred_knn_test)
+```
+
+### Feed-Forward Neural Network with KNN prediction
+```{r}
+model_fnn_knn <- keras_model_sequential(name = "ETA-Predictor_NYC-Taxi_1.0.1") %>%
+  layer_dense(units = 256,
+              activation = "relu",
+              input_shape = ncol(X_train),
+              name = "hidden_1") %>%
+  layer_dense(units = 128,
+              activation = "relu",
+              name = "hidden_2") %>%
+  layer_dense(units = 64,
+              activation = "relu",
+              name = "hidden_3") %>%
+  layer_dense(units = 1,
+              activation = "linear",
+              name = "output")
+
+model_fnn_knn %>% compile(
+  loss = "mean_squared_error",
+  optimizer = optimizer_adam(learning_rate = 0.01),
+  metrics = "mean_absolute_percentage_error"
+)
+
+history <- model_fnn_knn %>% fit(
+  X_train, y_train,
+  epochs = 30,
+  batch_size = 8192,
+  validation_data = list(X_test, y_test),
+  verbose = 1
+)
+
+model_fnn_knn
+```
+
+#### New Feed-Forward Neural Network Model Evaluation
+```{r}
+pred_fnn_knn <- predict(model_fnn_knn, X_test) %>% as.vector()
+
+getRegressionErrors(pred_fnn_knn, y_test)
+```
+> Not better than my original FNN model.
+
+## **Model Selection**
+So, the model that wins the model selection is:
+```{r}
+model_fnn
+```
+
+> Congratulations to our model **model_fnn**
+
+## **Regression Assumptions** {.tabset}
+### 1. Linearity
+```{r message=FALSE, warning=FALSE}
+residuals_fnn <- y_test - pred_fnn
+
+ggplot(data = data.frame(y_test = y_test, pred_fnn = pred_fnn), aes(x = y_test, y = pred_fnn)) +
+  geom_point() +
+  geom_abline(intercept = 0, slope = 1, color = "red") +
+  labs(title = "Predicted vs Actual Values",
+       x = "Actual Values",
+       y = "Predicted Values") +
+  theme_minimal()
+
+ggplot(data.frame(pred_fnn, residuals_fnn),
+       aes(x = pred_fnn, y = residuals_fnn)) +
+  geom_point() +
+  geom_smooth() +
+  labs(title = "Residuals Spread Pattern",
+       x = "Predicted Values",
+       y = "Residuals") +
+  theme_minimal()
+```
+
+> Cool. Why? Because:
+>
+> 1. It has a linear pattern
+> 2. The residual bounces randomly around 0
+
+### 2. Normality of Residuals
+```{r}
+ggplot(data = data.frame(residuals_fnn), aes(x = residuals_fnn)) +
+  geom_density(fill = "#56b4fc", col = "white", alpha = 0.5) +
+  labs(title = "Density of Residuals",
+       x = "Residuals",
+       y = "Frequency") +
+  theme_minimal()
+```
+
+> Cool. Why? Cause the residuals are mostly around zero
+
+### 3. Homoscedasticity of Residuals
+```{r}
+ggplot(data = data.frame(pred_fnn, residuals_fnn), aes(x = pred_fnn, y = residuals_fnn)) +
+  geom_point() +
+  geom_hline(yintercept = 0, color = "red") +
+  labs(title = "Residuals vs Predicted Values",
+       x = "Predicted Values",
+       y = "Residuals") +
+  theme_minimal()
+```
+
+> Cool. Why? Cause the residual has random cloud shape (no discernible pattern)
+
+### 4. No Multicollinearity
+Because my neural network model uses encoded features, I can't directly do multicollinearity check. So I'm gonna use my linear model just to check the multicollinearity of the features
+```{r}
+vif(model_lm)
+```
+
+> Cool. Why? Cause there's no feature with vif >= 10
+
+## **Conclusion**
+> In conclusion, after a comprehensive exploration of multiple algorithms including linear regression, random forest, feedforward neural networks (FNN), and k-nearest neighbors (KNN), I have finally found the best model which is the FNN model. The FNN model's performance metrics, including MAE, MAPE, MSE, and RMSE, exhibit highly favorable results, with an overall accuracy that suggests its readiness for practical deployment. Moreover, the model satisfies crucial regression assumptions such as linearity, normality of residuals, homoscedasticity of residuals, and absence of multicollinearity. With its exceptional predictive capabilities and fulfillment of key assumptions, this model is poised for effective real-world application in time arrival estimation tasks

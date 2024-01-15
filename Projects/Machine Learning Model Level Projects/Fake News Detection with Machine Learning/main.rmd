@@ -1,0 +1,308 @@
+---
+title: 'Fake News Detection with NLP & Machine Learning'
+author: 'Ardian the Great'
+date: "`r format(Sys.Date(), '%B %dth, %Y')`"
+output:
+  html_document:
+    theme: sandstone
+    css: style.css
+    highlight: zenburn
+    df_print: paged
+    toc: true
+    toc_float: true
+---
+
+### Import used libraries
+```{r message=FALSE, warning=FALSE}
+library(dplyr)
+library(Ardian)
+library(NLP)
+library(e1071)
+library(caret)
+library(lubridate)
+library(ggplot2)
+library(glue)
+library(plotly)
+library(ROCR)
+```
+
+### Read the datasets
+```{r}
+fake <- read.csv("data_input/Fake.csv")
+real <- read.csv("data_input/True.csv")
+```
+
+### Inpspect the data {.tabset}
+#### Fake news
+```{r}
+fake %>% head()
+```
+
+#### Real news
+```{r}
+real %>% head()
+```
+
+## **Data Pre-processing**
+### Check duplicated rows
+```{r}
+fake %>% duplicated() %>% any()
+real %>% duplicated() %>% any()
+```
+> There are duplicated rows, let's get rid of it!
+
+### Get rid of duplicated values
+```{r}
+fake <- fake %>% distinct()
+real <- real %>% distinct()
+
+# Check duplicated rows again
+fake %>% duplicated() %>% any()
+real %>% duplicated() %>% any()
+```
+> Cool, the data now has no duplicated rows
+
+### Check missing values
+```{r}
+fake %>% anyNA()
+real %>% anyNA()
+```
+> There are no missing values!
+
+### Remove unnecessary columns and create target label column (**is_fake**)
+```{r}
+fake <- fake %>%
+  select(title, text, date) %>% 
+  mutate(is_fake = "1")
+real <- real %>%
+  select(title, text, date) %>% 
+  mutate(is_fake = "0")
+```
+
+### Merge both data frames
+I will store it in a new variable named **news**
+```{r}
+set.seed(1)
+
+news <- rbind(fake, real)
+news <- news[sample(nrow(news)), ] %>% 
+  mutate(is_fake = as.factor(is_fake))
+
+news %>% head()
+```
+
+### Merge title with text
+I will paste the title to the text
+```{r}
+news <- news %>%
+  mutate(text = paste(title, text)) %>% 
+  select(is_fake, text)
+
+news %>% head()
+```
+
+### Check target proportion
+```{r}
+news$is_fake %>% 
+  table() %>% 
+  barplot(main = "Target Variable Proportion")
+```
+
+> Alhamdulillah, it's balanced
+
+
+## **Exploratory Data Analysis** {.tabset}
+                                                                  
+### Data Aggregation for EDA
+Don't worry about this chunk, this is just some data aggregations for the EDA visualization
+```{r warning=FALSE, message=FALSE}
+# FAKE NEWS
+fake_viz_daily_df <- read.csv("data_input/Fake.csv")%>%
+  select(date) %>% 
+  mutate(date = mdy(date) + years(5)) %>%  # I manipulate the year just to look updated and more relevant :D
+  filter(complete.cases(.)) %>% 
+  arrange(date) %>% 
+  
+  group_by(date) %>% 
+  summarise(daily_fake_news = n()) %>% 
+  
+  mutate(tooltip_daily = glue("{date}
+                        {daily_fake_news} fake news"))
+
+fake_viz_monthly_df <- read.csv("data_input/Fake.csv")%>%
+  select(date) %>% 
+  mutate(date = mdy(date) + years(5),
+         year = year(date),
+         month = month(date, label = T, abbr = F)) %>% 
+  filter(complete.cases(.)) %>% 
+  arrange(date) %>% 
+  
+  group_by(month, year) %>% 
+  summarise(monthly_fake_news = n()) %>% 
+  ungroup() %>% 
+  
+  arrange(year) %>% 
+  mutate(month_year = my(paste(month, year)),
+         tooltip_monthly = glue("{month} {year}
+                        {monthly_fake_news} fake news"))
+  
+# REAL NEWS
+real_viz_daily_df <- read.csv("data_input/True.csv")%>%
+  select(date) %>% 
+  mutate(date = mdy(date) + years(5)) %>% 
+  filter(complete.cases(.)) %>% 
+  arrange(date) %>% 
+  
+  group_by(date) %>% 
+  summarise(daily_real_news = n()) %>% 
+  
+  mutate(tooltip_daily = glue("{date}
+                        {daily_real_news} real news"))
+
+real_viz_monthly_df <- read.csv("data_input/True.csv")%>%
+  select(date) %>% 
+  mutate(date = mdy(date) + years(5),
+         year = year(date),
+         month = month(date, label = T, abbr = F)) %>% 
+  filter(complete.cases(.)) %>% 
+  arrange(date) %>% 
+  
+  group_by(month, year) %>% 
+  summarise(monthly_real_news = n()) %>% 
+  ungroup() %>% 
+  
+  arrange(year) %>% 
+  mutate(month_year = my(paste(month, year)),
+         tooltip_monthly = glue("{month} {year}
+                        {monthly_real_news} real news"))
+```
+
+### News Daily Trend
+```{r}
+plot_ly() %>%
+  add_lines(data = fake_viz_daily_df, x = ~date, y = ~daily_fake_news, color = I("#FF8BA0"),
+            name = "Fake News", text = ~tooltip_daily, hoverinfo = "text",
+            line = list(width = 1)) %>%
+  add_lines(data = real_viz_daily_df, x = ~date, y = ~daily_real_news, color = I("#77CCFF"),
+            name = "Real News", text = ~tooltip_daily, hoverinfo = "text",
+            line = list(width = 1)) %>%
+  layout(title = "\nTotal News Daily Trend",
+         xaxis = list(title = ""),
+         yaxis = list(title = "Total News"),
+         showlegend = TRUE,
+         legend = list(title = NULL))
+```
+
+> A few months back, the total number of real news surpassed the number fake news
+
+### Monthly Daily Trends
+```{r}
+plot_ly() %>%
+  add_lines(data = fake_viz_monthly_df, x = ~month_year, y = ~monthly_fake_news, color = I("#FF8BA0"),
+            name = "Fake News", text = ~tooltip_monthly, hoverinfo = "text",
+            line = list(width = 4)) %>%
+  add_lines(data = real_viz_monthly_df, x = ~month_year, y = ~monthly_real_news, color = I("#77CCFF"),
+            name = "Real News", text = ~tooltip_monthly, hoverinfo = "text",
+            line = list(width = 4)) %>%
+  layout(title = "\nTotal News Monthly Trend",
+         xaxis = list(title = ""),
+         yaxis = list(title = "Total News"),
+         showlegend = TRUE,
+         legend = list(title = NULL))
+```
+
+> However, when we look further back, the average number of fake news is generally higher than real news
+
+## **Natural Language Processing**
+
+### Clean the text
+```{r}
+cleaned_text_corpus <- cleanText(news$text, lang = "en", as.corpus = T) # This function is from my personal package
+```
+
+### Convert text into 'Document-Term Matrix'
+```{r}
+text_dtm <- DocumentTermMatrix(cleaned_text_corpus)
+
+text_dtm %>% inspect()
+```
+
+### Check how many features/terms
+```{r}
+dim(text_dtm)
+```
+> Too much features/terms, let's reduce it by removing the terms that appear less than 150 times
+
+```{r}
+frequent_terms <- findFreqTerms(x = text_dtm, lowfreq = 150)
+
+text_dtm <- text_dtm[, frequent_terms]
+```
+
+### Check how many features/terms
+```{r}
+dim(text_dtm)
+```
+> Cool, there are only 7023 features/terms now, less noisy!
+
+### Apply bernoulli converter
+```{r}
+text_dtm_bn <- apply(X = text_dtm, FUN = toBernoulli, MARGIN = 2) # toBernoulli function is from my personal package
+```
+                                                                        
+## **Cross Validation**
+### Set training indices
+```{r}
+set.seed(1)
+
+indices <- createDataPartition(news$is_fake,
+                               p = 0.8,
+                               list = FALSE)
+```
+
+### Train test split
+```{r}
+X_train <- text_dtm_bn[indices, ]
+y_train <- news[indices, "is_fake"]
+
+X_test <- text_dtm_bn[-indices,]
+y_test <- news[-indices, "is_fake"]
+```
+                    
+## **Model Fitting & Evaluation**
+### Naive Bayes Algorithm
+Because of it's fast computation, Naive Bayes is the best machine learning algorithm for cases like this where there is a lot of features/terms!
+```{r}
+model_nb <- naiveBayes(x = X_train,
+                       y = y_train,
+                       laplace = 1)
+```
+
+### Naive Bayes Model Evaulation
+```{r}
+# Predict unseen/test data
+pred_nb <- predict(model_nb, X_test, type = "class")
+
+# Evaluate predictions
+confusionMatrix(pred_nb, y_test, positive = "1")
+```
+> The generated model is excellent, with an **Accuracy** of **96%** and **Sensitivity** of **96%**. The model has a **high Accuracy**, **high Sensitivity**, and **high Specificity**, indicating that the model is excellent at predicting/detecting both real and fake news
+
+## **AUC of ROC Score**
+My way of explaining the AUC of ROC score is that it reflects the level of certainty our model has in its predictions. A high AUC of ROC score indicates that the model is very confident and sure of its predictions. As people who use the model, we want the model to be highly confident in its predictions since we rely on it for making decisions. We don't want a model that isn't sure or confident about its predictions. This is why the AUC or ROC score is a crucial measure to determine if the model is prepared for practical use or not.
+```{r}
+pred_nb_raw <- predict(model_nb, X_test, type = "raw")
+
+plotROC(pred_nb_raw[, 2], y_test) # This function is from my personal package
+```
+
+> Magnificent. Why? Because the closer the AUC to 1 the more confident the model is at detecting which news is fake and which is real.
+
+## **Conclusion**
+
+> In conclusion, the generated model is truly outstanding, boasting an Accuracy of 96% and Sensitivity of 96%. The model exhibits exceptional accuracy, high sensitivity, and strong specificity, signifying its prowess in effectively identifying both genuine and fabricated news articles.
+>
+> Furthermore, the impressive AUC score of 0.99 serves as an additional testament to the model's readiness for practical deployment. The near-perfect AUC score indicates the model's high confidence in distinguishing between real and fake news. With its remarkable performance across various metrics, the model has proven itself to be well-prepared and capable of reliable utilization.
+
+
+

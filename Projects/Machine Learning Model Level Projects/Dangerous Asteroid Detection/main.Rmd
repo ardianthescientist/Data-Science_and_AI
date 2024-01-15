@@ -1,0 +1,250 @@
+---
+title: "Hazardous/Dangerous Asteroid Detection with Machine Learning"
+author: 'Ardian the Great'
+date: "`r format(Sys.Date(), '%B %dth, %Y')`"
+output:
+  html_document:
+    theme: sandstone
+    css: style.css
+    highlight: zenburn
+    df_print: paged
+    toc: true
+    toc_float: true
+---
+This machine learning project focuses on a critical challenge: detecting hazardous asteroids. The primary goal of this endeavor is to construct a robust predictive model with the capability to identify asteroids that pose a threat to Earth. By accurately pinpointing potential hazards, the model aims to enhance decision-making in planetary defense strategies, mitigate potential risks, and facilitate informed actions in the realm of planetary safety.
+
+These are some valuable advantages that are offered by the result of this project:
+
+> * `Early Alerts:` Timely warnings for potential asteroid threats.
+> * `Impact Reduction:` Minimized risk from hazardous asteroids.
+> * `Informed Decisions:` Data-driven choices for emergency responses.
+> * `Planetary Safety:` Improved defense against celestial hazards.
+> * `Scientific Insights:` Enhanced understanding of asteroid behavior.
+> * `Public Awareness:` Raised awareness and educational opportunities.
+> * `Global Collaboration:` International partnerships for defense efforts.
+> * `Mission Planning:` Optimized space mission targeting.
+> * `Policy Influence:` Guidance for planetary defense policies.
+> * `Inspiration:` Catalyst for innovation and space exploration.
+
+## **Data Pre-processing**
+### Import used libraries
+```{r message=FALSE}
+library(dplyr)
+library(caret)
+library(inspectdf)
+library(Ardian)
+library(GGally)
+library(e1071)
+library(randomForest)
+```
+
+### Read the data
+The data is from `NASA API` from http://neo.jpl.nasa.gov/. This API is maintained by SpaceRocks Team: David Greenfield, Arezu Sarvestani, Jason English and Peter Baunach.
+```{r}
+asteroids <- read.csv("nasa.csv", stringsAsFactors = T)
+```
+
+### Inspect the data {.tabset}
+#### Top 6 rows
+```{r}
+asteroids %>% head()
+```
+
+#### Bottom 6 rows
+```{r}
+asteroids %>% tail()
+```
+
+### Check duplicated rows
+```{r}
+asteroids %>% duplicated() %>% anyNA()
+```
+> There no duplicated row
+
+### Check missing values
+```{r}
+asteroids %>% anyNA()
+```
+> There's no missing value
+
+### Check data structure
+```{r}
+asteroids %>% glimpse()
+```
+> We need to do two things:
+>
+> 1. Restructure target variable (`Hazardous`)
+> 2. Remove uneeded columns
+
+### Restructure target variable
+```{r}
+asteroids$Hazardous <- ifelse(asteroids$Hazardous == "True", 1, 0) %>% as.factor()
+
+asteroids %>% head(3)
+```
+
+### Remove unneeded columns
+```{r}
+asteroids <- asteroids %>% 
+  select(-Close.Approach.Date,
+         -Orbit.Determination.Date,
+         -Neo.Reference.ID,
+         -Name,
+         -Orbit.ID)
+
+asteroids %>% glimpse()
+```
+
+## **Exploratory Data Analysis**
+### Check target variable proportion
+```{r}
+asteroids$Hazardous %>% table() %>% barplot()
+```
+
+> The target proportion is imbalanced. Let's upsample!
+
+### Upsample the data
+```{r}
+up_asteroids <- upSample(x = asteroids %>% select(-Hazardous),
+                         y = asteroids$Hazardous,
+                         yname = "Hazardous")
+
+up_asteroids$Hazardous %>% table() %>% barplot()
+```
+
+> Cool. It's balanced now!
+
+### Inspect categorical columns distributions
+```{r}
+up_asteroids %>% inspect_cat() %>% show_plot()
+```
+
+> The column `Equinox` and `Orbiting.Body` has 0 variance. Let's remove them!
+
+### Remove zero variance columns
+```{r}
+up_asteroids <- up_asteroids %>% select(-Equinox,
+                                        -Orbiting.Body)
+
+up_asteroids %>% head(3)
+```
+
+### Inspect numerical columns distributions
+```{r}
+up_asteroids %>% select_if(is.numeric) %>% summary()
+```
+> All numerical columns are distributed normally. Let's move on to cross validation!
+
+## **Cross Validation**
+### Set training indices
+Because we don’t have a lot of records, we will set the training proportion to 85%
+```{r}
+set.seed(1)
+indices <- createDataPartition(y = up_asteroids$Hazardous,
+                               p = 0.85,
+                               list = F)
+```
+
+### Split train & test
+```{r}
+train_data <- up_asteroids[indices, ]
+test_data <- up_asteroids[-indices, ]
+
+X_train <- train_data %>% select(-Hazardous)
+X_test <- test_data %>% select(-Hazardous)
+
+y_train <- train_data$Hazardous
+y_test <- test_data$Hazardous
+```
+
+## **Model Fitting, Evaluation, & Selection**
+### Naive Bayes Algorithm
+```{r}
+model_nb <- naiveBayes(x = X_train,
+                       y = y_train,
+                       laplace = 1)
+```
+
+### Naive Bayes Model Evaluation
+```{r}
+pred_nb <- predict(model_nb, X_test)
+
+confusionMatrix(pred_nb, y_test)
+```
+> The focused metric for our evaluation is `Accuracy`. Why? Because in the realm of hazardous asteroid detections, it's crucial to ensure a reliable overall performance in identifying both hazardous and non-hazardous instances.
+>
+> The Naive Bayes model has demonstrated an overall `Accuracy of 92%`, accompanied by a `Sensitivity of 93%` and `Specificity of 92%`. The high Sensitivity indicates the model's effectiveness in correctly identifying hazardous asteroids, a critical capability for early detection and accurate assessment of potential threats. Furthermore, the impressive Specificity underscores the model's ability to accurately classify non-hazardous asteroids. These results collectively contribute to our ability to proactively mitigate the risk posed by hazardous celestial bodies and enhance our planetary safety measures.
+>
+> `NOTE:` Due to the unpredictable nature of R Markdown rendering, the generated scores might differ when the document is converted to HTML
+
+### Logistic Regression Algorithm
+```{r message=FALSE, warning=FALSE}
+model_lgr <- glm(Hazardous ~ ., "binomial", train_data)
+```
+
+### Logistic Regression Evaluation
+```{r}
+pred_lgr <-  ifelse(predict(model_lgr, X_test) > 0.5, 1, 0) %>% as.factor()
+
+confusionMatrix(pred_lgr, y_test)
+```
+> The logistic regression model exhibited an impressive `Accuracy of 93%`, alongside a `Sensitivity of 95%` and `Specificity of 92%`. The high Sensitivity demonstrates the model's effectiveness in correctly flagging hazardous asteroids, which is of paramount importance for early detection and mitigation efforts, contributing to enhanced planetary safety.
+
+### Random Forest Algorithm
+```{r}
+ctrl <- trainControl(method = "repeatedcv",
+                     number = 3,
+                     repeats = 5)
+
+model_rf <- train(Hazardous ~ .,
+                  data = train_data,
+                  method = "rf",
+                  trConrol = ctrl,
+                  ntree = 101)
+```
+
+### Random Forest Model Evaluation
+```{r}
+pred_rf <- predict(model_rf, X_test)
+
+confusionMatrix(pred_rf, y_test)
+```
+> The random forest model demonstrated remarkable performance, achieving an exceptional `Accuracy of 100%`, making it the `winner model of this project!`. Furthermore, the model achieved a `Sensitivity of 100%` and `Specificity of 100%`. This outstanding performance reflects the model's ability to flawlessly distinguish hazardous asteroids from non-hazardous ones. Such high sensitivity and specificity are instrumental in identifying and classifying objects accurately, underscoring the model's reliability in predicting hazardous asteroids. This level of precision is of paramount importance for effective early detection and risk assessment, contributing to enhanced planetary safety and preparedness. 
+
+## **AUC of ROC**
+My way of explaining the AUC of ROC score is that it reflects the level of certainty our model has in its predictions. A high AUC of ROC score indicates that the model is very confident and sure of its predictions. As people who use the model, we want the model to be highly confident in its predictions since we rely on it for making decisions. We don’t want a model that isn’t sure or confident about its predictions. This is why the AUC or ROC score is a crucial measure to determine if the model is prepared for practical use or not.
+```{r}
+pred_rf_raw <- predict(model_rf, X_test, type = "prob")
+
+plotROC(pred_rf_raw[, 2], y_test) # This function is from my personal package
+```
+
+> Magnificent. Why? Because the closer the AUC to 1 the more confident the model is at detecting which asteroids are hazardous and which are not
+
+## **Conclusion**
+In conclusion, the final model developed for hazardous asteroid detection, which is the random forest model, stands as an exceptional achievement in predictive modeling. With an extraordinary Accuracy of 100% and Sensitivity of 100%, the model showcases unparalleled precision in identifying hazardous asteroids. This model also demonstrates perfect Specificity of 100%, further highlighting its ability to accurately differentiate non-hazardous asteroids.
+
+Moreover, the AUC of ROC score of 1.0, representing a perfect score, serves as a resounding validation of the model's readiness for practical deployment. This impeccable AUC score underscores the model's absolute confidence in distinguishing between hazardous and non-hazardous asteroids. The model's remarkable performance across all evaluation metrics solidifies its position as a reliable and robust tool for effectively detecting potential asteroid threats.
+
+The flawless performance achieved by the random forest model, marked by its perfect accuracy, sensitivity, and specificity, attests to its exceptional competence in the realm of hazardous asteroid detection. With its unprecedented performance metrics, the model stands as a testament to its preparedness for real-world application, offering invaluable contributions to planetary defense and safety.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

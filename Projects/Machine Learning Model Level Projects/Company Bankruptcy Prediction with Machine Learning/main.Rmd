@@ -1,0 +1,231 @@
+---
+title: "Company Bankruptcy Prediction"
+author: 'Ardian the Great'
+date: "`r format(Sys.Date(), '%B %d, %Y')`"
+output:
+  html_document:
+    theme: sandstone
+    css: style.css
+    highlight: zenburn
+    df_print: paged
+    toc: true
+    toc_float: true
+---
+
+### Import used libraries
+```{r message=FALSE}
+library(dplyr)
+library(GGally)
+library(reshape2)
+library(caret)
+library(FactoMineR)
+library(factoextra)
+library(class)
+library(Ardian) # My personal Package
+```
+
+### Read the data
+```{r}
+companies <- read.csv('datasets/companies.csv')
+```
+
+### **Inspect the data** {.tabset}
+#### Top 6 rows
+```{r}
+companies %>% head()
+```
+
+#### Bottom 6 rows
+```{r}
+companies %>% tail()
+```
+
+## **Data Pre-processing**
+### Check missing values
+```{r}
+companies %>% duplicated() %>% any()
+```
+ > Alhamdulillah, there are no duplicated rows
+ 
+### Check missing values
+```{r}
+companies %>% anyNA()
+```
+> Alhamdulillah, there are no missing values
+
+### Inspect data structure
+```{r}
+companies %>% glimpse()
+```
+> Wow, so many columns
+
+### Parse categorical columns
+```{r}
+companies <- companies %>% 
+  mutate_at(vars(Bankrupt., Liability.Assets.Flag, Net.Income.Flag), as.factor)
+```
+
+### Check categorical columns summary
+```{r}
+companies %>% select_if(is.factor) %>% summary()
+```
+> Turns out they're near zero variance, I'll just remove them.
+>
+> And about the target proportion, I'll talk about it
+
+### Remove near zero variance columns
+```{r}
+companies <- companies %>% select(-Net.Income.Flag, -Liability.Assets.Flag)
+```
+
+### Check target variable proportion
+```{r}
+companies$Bankrupt. %>% table() %>% barplot()
+```
+
+> Too imbalanced, I'll upsample the data
+
+### Upsample the data
+```{r}
+up_companies <- upSample(x = companies %>% select(-Bankrupt.),
+                         y = companies$Bankrupt.,
+                         yname = "Bankrupt")
+
+up_companies$Bankrupt %>% table() %>% barplot()
+```
+
+> Nice. It's balanced now!
+
+## **Feature Engineering** (with Unsupervised Learning)
+### Check features correlations
+```{r warning=FALSE}
+ggcorr(up_companies)
+```
+
+> Ah hell nah. There are bunch of correlated features.
+>
+> Because there are too many columns, I'll implement Principal Component Analysis (PCA)!
+
+### Principal Component Analysis (PCA)
+```{r}
+pca_companies <- PCA(X = up_companies,
+                     scale.unit = T,
+                     graph = F,
+                     quali.sup = which(colnames(up_companies) == "Bankrupt"),
+                     ncp = ncol(up_companies) - 1)
+```
+
+## **Feature Selection**
+### Check cumulative percentage
+```{r}
+pca_companies$eig
+```
+
+> I will accumulate up to 95% of the total information, means I will use up to 50 PCs
+
+```{r}
+pc_companies <- as.data.frame(pca_companies$ind$coord[, 1:50]) %>%
+  mutate(Bankrupt = up_companies$Bankrupt)
+
+pc_companies %>% head()
+```
+
+### Check features correlations again
+```{r warning=FALSE}
+ggcorr(pc_companies)
+```
+
+> Magnificent. I now don't have correlated features. This is the beauty of PCA!
+
+## **Exploratory Data Analysis**
+### PC1 vs PC2
+#### Variable Factor Map
+```{r warning=FALSE}
+plot.PCA(x = pca_companies,
+         choix = "var")
+```
+
+#### Individual Factor Map
+```{r warning=FALSE}
+plot.PCA(
+  x = pca_companies,           
+  choix = "ind",      
+  habillage = "Bankrupt",
+  select = "contrib 0",
+  invisible = "quali"
+)
+```
+
+#### Top 5 Contributed Variables
+```{r}
+fviz_contrib(pca_companies,
+             "var",
+             top = 5)
+```
+
+## **Cross Validation**
+
+### Set training indices
+```{r}
+set.seed(1)
+
+indices <- createDataPartition(y = pc_companies$Bankrupt,
+                               p = 0.8,
+                               list = FALSE)
+```
+
+### Train test split
+```{r}
+train_data <- pc_companies[indices, ]
+test_data <- pc_companies[-indices, ]
+
+X_train <- train_data %>% select(-Bankrupt)
+y_train <- train_data$Bankrupt
+
+X_test <- test_data %>% select(-Bankrupt)
+y_test <- test_data$Bankrupt
+```
+
+## **Model Fitting**
+### Logistic Regression Algorithm
+```{r warning=FALSE}
+model_lgr <- glm(formula = Bankrupt ~ .,
+                 family = "binomial",
+                 data = train_data)
+
+model_lgr %>% summary()
+```
+
+### Logistic Regression Model Evaluation {.tabset}
+```{r}
+pred_lgr_raw <- predict(model_lgr, X_test, type = "response")
+pred_lgr <- ifelse(pred_lgr_raw > 0.5, 1, 0)
+```
+
+#### Confusion Matrix
+```{r}
+confusionMatrix(as.factor(pred_lgr), y_test)
+```
+
+#### AUC of ROC
+```{r}
+plotROC(pred_lgr_raw, y_test)
+```
+
+
+> Not bad. But let's try K-Nearest Neighbour algorithm!
+
+### K-Nearest Neighbour Algorithm
+```{r}
+pred_knn <- knn(train = X_train,
+                test = X_test,
+                cl = y_train,
+                k = round(sqrt(nrow(X_train))))
+```
+
+### KNN Evaluation
+```{r}
+confusionMatrix(pred_knn, y_test)
+```
+> It's way better! Predicting wether the company is gonna go bankrupt or not at that score of **Accuracy** is amazing! Also, don't forget to pay attention to the **Sensitivity** score and **Specificity** score, the **Specificity** is higher than the **Sensitivity** which means this model better at predicting a company that is not gonna go bankrupt
+

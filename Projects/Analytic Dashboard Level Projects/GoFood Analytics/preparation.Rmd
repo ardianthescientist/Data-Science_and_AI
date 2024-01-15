@@ -1,0 +1,354 @@
+# Import library
+```{r}
+library(dplyr)
+library(stringr)
+library(lubridate)
+library(ggplot2)
+library(glue)
+library(plotly)
+library(tidyr)
+```
+
+
+# Read data gojek
+```{r}
+gojek <- read.csv("gojek.csv")
+
+head(gojek)
+```
+
+# Filter untuk data mode FOOD
+```{r}
+gofood <- filter(gojek, mode == "FOOD")
+```
+
+Kolom yang tidak diperlukan untuk project ini:
+- from_lat
+- from_lng
+- to_lat
+- to_lng
+
+# Hapus kolom yang tidak diperlukan
+```{r}
+colnames(gofood)
+```
+
+Kolom yang tidak diperlukan:
+- mode
+- from_lat
+- from_lng
+- to_lat
+- to_lng
+- driver_id
+- driver_name
+- driver_gender
+- driver_birthdate
+- kendaraan_jenis
+- kendaraan_merk
+
+# Hapus kolom yang tidak diperlukan
+```{r}
+gofood <- select(gofood,
+                 -mode,
+                 -from_lat,
+                 -from_lng,
+                 -to_lat,
+                 -to_lng,
+                 -driver_id,
+                 -driver_name,
+                 -driver_gender,
+                 -driver_birthdate,
+                 -kendaraan_jenis,
+                 -kendaraan_merk)
+```
+
+Kolom dengan tipe data yang tidak sesuai:
+- date_order
+- date_finished
+- from_lat
+- from_lng
+- to_lat
+- to_lng
+- distance
+- customer_gender
+- customer_birthdate
+- driver_birthdate
+- kendaraan_jenis
+- kendaraan_merk
+- merchant_category
+
+# Mutate untuk memperbaiki tipe_data
+```{r}
+gofood <- mutate(gofood,
+       date_order = dmy_hm(date_order),
+       date_finished = dmy_hm(date_finished),
+       distance = as.numeric(gsub(",", ".", distance)),
+       customer_gender = as.factor(customer_gender),
+       customer_gender = ifelse(customer_gender == "P", "Perempuan", ifelse(customer_gender == "L", "Laki-laki", customer_gender)),
+       customer_birthdate = date(ymd_hms(customer_birthdate)),
+       merchant_category = as.factor(str_to_title(merchant_category)),
+       from_kelurahan = as.factor(str_to_title(from_kelurahan)),
+       from_kecamatan = as.factor(str_to_title(from_kecamatan)),
+       to_kelurahan = as.factor(str_to_title(to_kelurahan)),
+       to_kecamatan = as.factor(str_to_title(to_kecamatan))
+)
+```
+
+```{r}
+gofood
+```
+
+```{r}
+colnames(gofood)[c(1, 2, 5, 6, 7, 8, 9, 10, 12, 13)] <- c("id", "order_id", "alamat_merchant", "kelurahan_merchant", "kecamatan_merchant", "alamat_customer", "kelurahan_customer", "kecamatan_customer", "biaya_ongkir", "harga_produk")
+
+head(gofood)
+```
+
+# Membuat kolom customer_age
+```{r}
+gofood <- gofood %>% 
+  mutate(
+       customer_age = (as.integer(floor(difftime(Sys.Date(), customer_birthdate, units = "days")) / 365.25))
+       ) %>% 
+  # Posisikan kolom customer_age di setelah kolom customer_birthdate
+  relocate(customer_age, .after = customer_birthdate)
+
+gofood
+```
+
+# Membuat data frame gofood by category
+```{r}
+gofood_by_category <- gofood %>% 
+  group_by(merchant_category) %>% 
+  summarise(count=n()) %>% 
+  ungroup() %>% 
+  arrange(-count) %>% 
+  mutate(
+    plotly_tooltip = glue(
+      "{merchant_category}
+      {count} orders"
+    )
+  )
+```
+
+# Membuat plot ranking category merchant berdasarkan total order
+```{r}
+plot_gofood_category_rank <- ggplot(gofood_by_category, aes(y=count, x=reorder(merchant_category, count), text=plotly_tooltip)) +
+  geom_col(aes(fill=count), show.legend=F) +
+  scale_fill_gradient(low="darkgreen", high="lightgreen") +
+  labs(
+    title = "MERCHANT CATEGORY RANKING",
+    x = NULL,
+    y = "Total Orders",
+  ) +
+  theme_minimal()
+```
+
+# Membuat plotly untuk gofood_by_categpry_plot
+```{r}
+ggplotly(plot_gofood_category_rank, tooltip="text")
+```
+
+# Membuat data frame gofood by merchant
+```{r}
+gofood_by_merchant <- gofood %>% 
+  group_by(merchant_name, kelurahan_merchant, merchant_category) %>% 
+  summarise(count=n()) %>% 
+  ungroup() %>% 
+  arrange(-count) %>% 
+  mutate(
+    plotly_tooltip = glue(
+      "{merchant_name}
+      {count} orders
+      Category: {merchant_category}
+      Alamat: Kelurahan {kelurahan_merchant}"
+    )
+  )
+```
+
+# Membuat plot top n merchant berdasarkan total order
+```{r}
+n_merchant <- 15
+
+plot_gofood_top_merchant <- ggplot(head(gofood_by_merchant, n_merchant), aes(x=count, y=reorder(merchant_name, count), text=plotly_tooltip)) +
+  geom_col(aes(fill=count), show.legend=F) +
+  scale_fill_gradient(low="darkgreen", high="lightgreen") +
+  labs(
+    title = glue("TOP {n_merchant} MERCHANTS"),
+    y = NULL,
+    x = "Total Order",
+  ) +
+  scale_x_continuous(breaks = seq(0, max(gofood_by_merchant$count), by = 1)) +
+  theme_minimal()
+```
+
+# Membuat plotly untuk plot_gofood_by_merchant
+```{r}
+ggplotly(plot_gofood_top_merchant, tooltip="text")
+```
+
+# Membuat plot untuk gofood top n merchant total order by merchant category
+```{r}
+n_merchant <- 13
+selected_category <- "Jajanan"
+      
+      gofood_merchant_total_order_by_category <- gofood %>% 
+        group_by(merchant_name, merchant_category) %>% 
+        summarise(count=n()) %>% 
+        ungroup() %>%
+        top_n(n_merchant) %>% 
+        arrange(-count) %>%
+        mutate(
+          plotly_tooltip = glue(
+            "{merchant_name}
+      {count} orders"
+          )
+        )
+      
+      if (selected_category == "All") {
+        title_text <- glue("TOP {n_merchant} MERCHANTS for ALL CATEGORY by TOTAL ORDERS")
+      } else {
+        title_text <- glue("TOP {n_merchant} MERCHANTS in '{selected_category}' CATEGORY by TOTAL ORDERS")
+      }
+      
+      plot_gofood_top_n_merchant_total_order_by_category <- ggplot(data=gofood_merchant_total_order_by_category,
+                                                     aes(x=count,
+                                                         y=reorder(merchant_name, count),
+                                                         text=plotly_tooltip)) +
+        geom_col(aes(fill = count), show.legend = FALSE) +
+        scale_fill_gradient(low = "darkgreen", high = "lightgreen") +
+        labs(
+          title = title_text,
+          subtitle = "by total orders",
+          y = NULL,
+          x = "Total orders"
+        ) +
+        scale_x_continuous(breaks = seq(0, max(gofood_merchant_total_order_by_category$count), by = 1)) +
+        theme_minimal()
+```
+# Membuat plotly untuk plot_gofood_top_n_merchant_by_category
+```{r}
+ggplotly(plot_gofood_top_n_merchant_total_order_by_category, tooltip = "text")
+```
+
+```{r}
+selected_category <- "All"
+      n_merchant <- 10
+
+      if (selected_category == "All") {
+        filtered_gofood <- gofood
+        title_text <- glue("by TOTAL TRANSACTION")
+      } else {
+        filtered_gofood <- filter(gofood,
+                                  merchant_category == input$selected_category)
+        title_text <- glue("by TOTAL TRANSACTION")
+      }
+
+      gofood_merchant_total_transaction_by_category <- filtered_gofood %>%
+        group_by(merchant_name) %>%
+        summarise(sum_amount = sum(harga_produk)) %>%
+        ungroup() %>%
+        top_n(n_merchant, wt=sum_amount) %>%
+        arrange(desc(sum_amount)) %>%
+        mutate(
+          comma_sum_amount = format(sum_amount, big.mark = ","),
+          plotly_tooltip = glue(
+            "{merchant_name}
+      Total transaction: Rp{comma_sum_amount}")
+        )
+
+      plot_gofood_top_n_merchant_total_transaction_by_category <- ggplot(data = gofood_merchant_total_transaction_by_category,
+                                                                   aes(x = sum_amount,
+                                                                       y = reorder(merchant_name, sum_amount),
+                                                                       text = plotly_tooltip)) +
+        geom_col(aes(fill=sum_amount), show.legend=F) +
+        scale_fill_gradient(low="darkgreen", high="lightgreen") +
+        labs(
+          title = title_text,
+          y = NULL,
+          x = "Total transaction"
+        ) +
+        scale_x_continuous(
+          labels = function(x) paste0("Rp", format(x, big.mark=",", scientific=F))
+        ) +
+        theme_minimal()
+
+      ggplotly(plot_gofood_top_n_merchant_total_transaction_by_category, tooltip="text")
+```
+
+
+# Membuat kolom order_hour
+```{r}
+gofood <- mutate(gofood,
+       order_hour = hour(date_order))
+```
+# Membuat data frame untuk gofood by order_hour
+```{r}
+gofood_by_order_hour <- gofood %>% 
+  group_by(order_hour) %>% 
+  summarise(count=n()) %>% 
+  ungroup() %>% 
+  arrange(order_hour)
+```
+
+# Membuat plot jam order customer
+```{r}
+plot_customer_order_hour <- ggplot(gofood_by_order_hour, aes(x=order_hour, y=count, text=glue("Jam {order_hour}\n{count} orders"))) +
+  geom_line(size=1, col="lightgreen", group=1) +
+  geom_point(col="darkgreen", size=3) +
+  labs(
+    title = "CUSTOMER ORDER ACTIVITY",
+    y = "Total Orders",
+    x = "Hour"
+  ) +
+  scale_x_continuous(breaks = seq(0, 24, by = 1)) +
+  scale_y_continuous(breaks = seq(0, 21, by = 3)) +
+  theme_minimal()
+```
+
+# Membuat plotly untuk plot_customer_order_hour # FIX ME
+```{r}
+ggplotly(plot_customer_order_hour, tooltip="text")
+```
+
+
+# Membuat plot jam order customer by category
+```{r}
+selected_category <- "CAFE"
+
+gofood_by_order_hour <- gofood %>% 
+  group_by(order_hour, merchant_category) %>% 
+  summarise(count=n()) %>% 
+  ungroup()
+
+filtered_data <- filter(gofood_by_order_hour,
+                        merchant_category == selected_category)
+
+plot_customer_order_hour <- ggplot(filtered_data, aes(x=order_hour, y=count)) +
+  geom_line(size=1, col="lightgreen") +
+  geom_point(col="darkgreen", size=3) +
+  labs(
+    title = glue("CUSTOMER ORDER ACTIVITY for '{selected_category}' CATEGORY"),
+    y = "Total Orders",
+    x = "Hour"
+  ) +
+  scale_x_continuous(breaks = seq(0, 24, by = 1)) +
+  theme_minimal()
+```
+
+# Membuat plot customer segmentation by age
+```{r}
+plot_gofood_customer_age <- ggplot(gofood, aes(x=customer_age, fill=after_stat(count), text=paste(glue("Age {x}"), "\n", after_stat(count),"customers"))) +
+  geom_histogram(binwidth=1, show.legend=F) +
+  scale_fill_gradient(low="darkgreen", high="lightgreen") +
+  labs(
+    title = "CUSTOMER AGE DISTRIBUTION",
+    x = "Age",
+    y = "Total Customers"
+  ) +
+  scale_x_continuous(breaks = seq(min(gofood$customer_age), max(gofood$customer_age), by=1)) +
+  theme_minimal()
+
+ggplotly(plot_gofood_customer_age, tooltip="text")
+```
+

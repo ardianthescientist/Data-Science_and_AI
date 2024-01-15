@@ -1,0 +1,482 @@
+---
+title: 'Ride Sharing Driver Sufficiency Prediction with Machine Learning'
+author: 'Ardian the Great'
+date: "August 11th, 2023"
+output:
+  html_document:
+    theme: sandstone
+    css: style.css
+    highlight: zenburn
+    df_print: paged
+    toc: true
+    toc_float: true
+---
+Project ini merupakan capstone project dari sekolah Data Science saya, yaitu Algoritma Data Science School. Saya diberikan sebuah kasus untuk memprediksi cukup tidaknya jumlah pengemudi dalam waktu dan area tertentu pada layanan ride sharing dan delivery di Turki yang bernama Scotty. Saya melewati proses data pre-processing, feature engineering & selection, analisis, kemudian membangun beberapa model prediktif yang memprediksi apakah suatu lokasi pada waktu tertentu memiliki jumlah pengemudi yang cukup atau tidak.
+
+Berikut manfaat dan keuntungan yang diperoleh Bisnis/Perusahaan Scotty dari hasil project ini:
+
+> * `Optimisasi Sumber Daya:` Model prediktif saya membantu Scotty mengatur alokasi pengemudi berdasarkan demand untuk menghindari ketidakseimbangan antara penawaran dan permintaan.
+> * `Peningkatan Kepuasan Pelanggan:` Ketersediaan pengemudi yang cukup meningkatkan kepuasan pengguna.
+> * `Efisiensi Operasional:` Jadwal dan penugasan pengemudi yang efisien berdasarkan insight dari model prediktif saya akan mengurangi biaya operasional.
+> * `Penyediaan Layanan Konsisten:` Model prediktif saya membantu memastikan layanan yang andal dengan mengantisipasi kekurangan pengemudi, baik di masa sekarang maupun masa yang akan datang.
+> * `Pengambilan Keputusan Lebih Baik:` Informasi dari model membantu pengembangan strategis, ekspansi wilayah, dan promosi yang lebih cerdas.
+> * `Peningkatan Reputasi:` Layanan yang handal tanpa masalah ketidakcukupan sumber daya akan membangun reputasi bisnis dan perusahaan yang baik dan memenangkan kepercayaan dan kesetiaan pelanggan maupun investor.
+
+## **Data Pre-processing**
+### Import library yang digunakan
+```{r message=FALSE}
+library(dplyr)
+library(lubridate)
+library(padr)
+library(caret)
+library(e1071)
+library(partykit)
+library(randomForest)
+library(Ardian)
+library(tidymodels)
+library(lime)
+```
+
+### Baca data train
+```{r}
+train <- read.csv("data_input/data-train.csv")
+```
+
+### Inspect data {.tabset}
+#### 6 baris teratas
+```{r}
+train %>% head()
+```
+
+#### 6 baris terbawah
+```{r}
+train %>% tail()
+```
+                                                                      
+### Periksa keberadaan baris duplikat                                                              
+```{r}
+train %>% duplicated() %>% any()
+```
+> Tidak ada data yang duplikat
+
+### Periksa keberadaan missing values
+```{r}
+train %>% anyNA()
+```
+> Terdapat missing values. Mari kita lihat informasi missing value pada setiap kolom!
+
+### Periksa missing values per kolom
+```{r}
+train %>% is.na() %>% colSums()
+```
+> Terdapat cukup banyak missing value pada kolom trip_id dan driver_id. Kabar baiknya, missing value pada kedua kolom tersebut dikarenakan tidak adanya driver, yang di mana informasi tersebut sudah diwakili oleh kolom status dengan nilai "nondrivers"
+
+### Drop kolom yang tidak dibutuhkan
+Ternyata, setelah saya lihat, data test hanya terdapat input *src_area* dan *start_time*. Karena itu, saya akan drop semua kolom selain dua kolom tersebut dan juga kolom *status*. Kolom `status` akan menjadi penentu apakah lokasi src_area pada waktu tertentu terdapat jumlah driver yang "sufficient" atau tidak. Nantinya, saya akan mengekstrak informasi `dhour` dan `wday` dari kolom start_time untuk dijadikan features
+```{r}
+train <- train %>% select(start_time, src_area, status)
+
+train %>% head(3)
+```
+
+### Ubah tipe data kolom
+Saya perlu mengubah tipe data ketiga kolom saya, yaitu:
+
+> 1. Kolom `start_time` datetime
+> 2. Kolom `src_area` dan `status` menjadi factor
+
+> Saya juga akan mengubah nama kolom start_time menjadi `datetime`
+
+```{r}
+train <- train %>%
+  mutate(start_time = floor_date(ymd_hms(start_time), unit = "hour")) %>%
+  mutate_if(is.character, as.factor) %>%
+  rename(datetime = start_time) %>%
+  arrange(datetime)
+
+train %>% head(3)
+```
+
+### Agregasi data
+Saya akan melakukan agregasi data untuk mendapatkan informasi jumlah transaksi untuk setiap pasangan `src_area`, `date_time`, dan `status`
+```{r message=FALSE}
+train <- train %>%
+  group_by(src_area, datetime, status) %>%
+  summarise(count = n()) %>%
+  arrange(src_area, datetime)
+
+train %>% head()
+```
+
+### Filter untuk transaksi dengan status *"nodrivers"*
+```{r}
+train <- train %>%
+  filter(status == "nodrivers") %>%
+  select(-status)
+
+train %>% head(3)
+```
+
+### Pad data
+Agar mendapatkan semua pasangan *src_area* dan *datetime* yang lengkap, saya perlu melakukan padding pada data saya
+```{r message=FALSE, warning=FALSE}
+train <- train %>%
+  group_by(src_area) %>%
+  summarise(datetime = seq(min(datetime), max(datetime), by = "hour")) %>%
+  pad() %>%
+  left_join(train, by = c("src_area", "datetime")) %>%
+  arrange(src_area, datetime) %>%
+  mutate(count = ifelse(is.na(count), 0, count))
+
+train %>% head()
+```
+
+### Membuat kolom variabel target (*Coverage*)
+`Coverage` bernilai "insufficient" apabila *count* (jumlah transaksi dengan status "nodrivers") bernilai lebih dari 0, dan sebaliknya
+```{r}
+train <- train %>%
+  mutate(coverage = ifelse(count > 0, "insufficient", "sufficient") %>% as.factor()) %>%
+  select(-count) %>%
+  as.data.frame()
+
+train %>% head()
+```
+
+## **Feature Engineering & Selection**
+### Ekstrak informasi dari datetime
+Ada dua informasi penting yang akan saya ekstrak dari kolom datetime untuk dijadikan feature, yaitu:
+
+> 1. `dhour`: Jam pick-up
+> 2. `wday`: Hari pick-up
+
+```{r}
+train <- train %>%
+  mutate(dhour = as.factor(hour(datetime)),
+         wday = as.factor(wday(datetime, label = T))) %>%
+  select(-datetime) %>%
+  as.data.frame()
+
+train %>% head()
+```
+
+## **Exploratory Data Analysis**
+### Cek proporsi variabel target
+```{r}
+train$coverage %>% table() %>% prop.table() %>% barplot()
+```
+
+> Alhamdulillah seimbang
+
+### Cek proporsi variabel target per *src_area*
+```{r}
+for (area in unique(train$src_area)){
+  filter(train, src_area == area)$coverage %>%
+          table() %>%
+          prop.table() %>%
+          barplot(main = area)
+}
+```
+
+> Sayang sekali proporsi target tidak balance pada src_area "sxk8" dan "sxk9"
+
+### Upsampling?
+Apakah saya akan melakukan upsampling untuk setiap area? Tidak. Karena, sebelumnya sudah saya coba dan performa modelnya tidak sebagus tanpa upsampling. Berikut cara saya upsampling pada percobaan sebelumnya:
+```{r eval=FALSE}
+up_sxk3 <- upSample(
+  x = train %>% filter(src_area == "sxk3") %>% select(-coverage),
+  y = train[train$src_area == "sxk3", "coverage"]
+)
+
+up_sxk8 <- upSample(
+  x = train %>% filter(src_area == "sxk8") %>% select(-coverage),
+  y = train[train$src_area == "sxk8", "coverage"]
+)
+
+up_sxk9 <- upSample(
+  x = train %>% filter(src_area == "sxk9") %>% select(-coverage),
+  y = train[train$src_area == "sxk9", "coverage"]
+)
+
+# Gabungkan seluruh hasil upsample
+up_train <- bind_rows(up_sxk3, up_sxk8, up_sxk9)
+```
+> Code pada chunk ini tidak dieksekusi
+
+### Kolerasi variabel target (*Coverage*) dengan features {.tabset}
+#### Coverage by pick-up location
+```{r}
+ggplot(train, aes(x = src_area, fill = coverage)) +
+  geom_bar(position = "stack") +
+  scale_fill_manual(values = c("pink", "brown")) +
+  labs(title = "Coverage by Pick-up Location") +
+  theme_minimal()
+```
+
+> Pengaruh lokasi pick-up terhadap ketidakcukupan driver sangat signifikan. *"sxk8"* merupakan wilayah yang paling jarang terdapat masalah ketidakcukupan driver. Sementara *"sxk9"* merupakan wilayah yang paling sering terdapat masalah ketidakcukupan driver
+
+#### Coverage by Hour of Day
+```{r}
+ggplot(train, aes(x = dhour, fill = coverage)) +
+  geom_bar(position = "stack") +
+  scale_fill_manual(values = c("pink", "brown")) +
+  labs(title = "Coverage by Hour of Day") +
+  theme_minimal()
+```
+
+> Secara keseluruhan, pengaruh jam terhadap kecukupan driver cukup signifikan. Nanti akan kita lihat pengaruh jam pada setiap area
+
+#### Coverage by Day of Week
+```{r}
+ggplot(train, aes(x = wday, fill = coverage)) +
+  geom_bar(position = "stack") +
+  scale_fill_manual(values = c("pink", "brown")) +
+  labs(title = "Coverage by Day of Week") +
+  theme_minimal()
+```
+
+> Secara keseluruhan pengaruh hari tidak terlihat signifikan. Mari kita lihat per masing-masing area!
+
+### Distribusi Coverage per *src_area* pada setiap *wday* dan *dhour*
+```{r}
+for (feature in c("dhour", "wday")) {
+  print(
+    ggplot(train, aes(x = get(feature), fill = coverage)) +
+      geom_bar(position = "stack") +
+      scale_fill_manual(values = c("brown", "pink")) +
+      facet_wrap(~ src_area) +
+      labs(title = paste("Coverage by", ifelse(feature == "dhour", "Hour of Day", "Day of Week")),
+           x = feature) +
+      theme_minimal()
+  )
+}
+```
+
+> Jam pick-up pada setiap daerah mempunyai pengaruh yang signifikan terhadap coverage. Begitu juga dengan hari pick-up walau tidak se-signifikan pengaruh jam
+
+### Heatmap *src_area*, *hour*, dan *wday* terhadap *Coverage*
+```{r message=FALSE}
+for (cov in c("both", "insufficient", "sufficient")){
+  heatmap_data <- train %>%
+    group_by(src_area, dhour, wday, coverage) %>%
+    summarise(count = n()) %>%
+    ungroup()
+
+  if (cov != "both"){
+    heatmap_data <- heatmap_data %>%
+      filter(coverage == cov)
+  }
+
+  print(
+    ggplot(heatmap_data, aes(x = dhour, y = wday, fill = count)) +
+      geom_tile() +
+      facet_grid(. ~ src_area) +
+      scale_fill_gradient(low = "pink", high = "brown") +  # You can choose different color palettes here
+      labs(title = paste("Coverage:", cov),
+           x = "dhour",
+           y = "wday",
+           fill = "Count") +
+      theme_minimal()
+  )
+}
+```
+
+## **Cross Validation**
+### Set index untuk data train
+```{r warning=FALSE}
+# Set seed, biar acakannya tidak berubah-ubah
+RNGkind(sample.kind = "Rounding")
+set.seed(1)
+# Ambil index untuk data train
+indices <- sample(nrow(train), nrow(train) * 0.8)
+```
+
+### Train test splitting
+```{r warning=FALSE}
+# Subset data train dan test
+train_data <- train[indices, ]
+test_data <- train[-indices, ]
+
+# Split features dan target
+X_train <- train_data %>% select(-coverage)
+y_train <- train_data$coverage
+X_test <- test_data %>% select(-coverage)
+y_test <- test_data$coverage
+```
+
+## **Model Fitting & Evaluation**
+### Metrics
+Kita akan menggunakan score metrik pada prediksi data test sebagai pembanding agar score yang dibandingkan **bukanlah hasil overfitting**. Untuk kasus ini, karena saya berpendapat bahwa kedua kondisi (FN & FP) sama-sama penting, maka saya akan menggunakan **accuracy** sebagai metrik utama. Selanjutnya, saya akan melihat keseimbangan antara sensitivity dan specificity.
+
+> * **Accuracy** mengukur sejauh mana model klasifikasi benar dalam memprediksi semua jenis kasus, baik yang positif maupun negatif.
+> * **Sensitivity** mengukur kemampuan model untuk mengidentifikasi dengan benar kasus dari kelas positif ("insufficient"). Sensitivity yang tinggi berarti model efektif dalam menangkap sebagian besar kasus "insufficient yang akurat. Sensitivity yang rendah berarti model kurang mampu memprediksi kelas positif
+> * **Specificity** mengukur kemampuan model untuk mengidentifikasi dengan benar kasus dari kelas negatif. Spesicificity yang tinggi menunjukkan bahwa model bagus dalam mengenali kasus-kasus kelas negatif ("sufficient"), tetapi mungkin tidak sebaik itu dalam kasus positif.
+
+### Algoritma Naive Bayes
+Karena cocok dengan kasus kita dan komputasi yang sangat cepat, kita akan mencoba algoritma naive bayes sebagai percobaan pertama,
+```{r}
+# Train model naive bayes
+model_nb <- naiveBayes(x = X_train, # Data features
+                       y = y_train, # Data target
+                       laplace = 1) # Set laplace = 1 untuk smoothing untuk mencegah terdapat probabilitas nol
+
+# Prediksi data test menggunakan model naive bayes kita
+pred_nb <- predict(model_nb, X_test)
+
+# Evaluasi model naive bayes kita menggunakan confusion matrix
+confusionMatrix(pred_nb, y_test)
+```
+> Model Naive Bayes saya mencapai Accuracy sekitar 78,32%. Dengan sensitivitas yang kuat dalam mendeteksi kasus "insufficient" pengemudi.
+
+### Algoritma Decision Tree
+Selain algoritma naive bayes, algoritma yang juga cocok dengan kasus kita adalah decision tree. Mari kita coba!
+```{r}
+# Train model decision tree dengan mengatur control-nya agar modelnya lebih spesifik
+model_dt <- ctree(coverage ~ .,
+                  train_data,
+                  control = ctree_control(mincriterion = 0.35,  # Set mincriterion = 0.35 agar node lebih mudah terbagi
+                                          minsplit = 5,      # Set minsplit = 5 agar untuk syarat minimun split
+                                          minbucket = 3))    # Set minbucket = 3 sebagai syarat minimum pembuatan node baru
+
+# Prediksi data test mengguanakan model decision tree kita
+pred_dt <- predict(model_dt, X_test)
+
+# Evaluasi model decision tee kita menggunakan confusion matrix
+confusionMatrix(pred_dt, y_test)
+```
+> Model Decision Tree saya mencapai Accuracy sekitar 78.65%, sedikit lebih baik dari model Naive Bayes. Juga dengan sensitivitas yang kuat dalam mendeteksi kasus "insufficient".
+
+### Algoritma Random Forest
+Karena model decision tree kita memiliki performa yang cukup bagus, langkah selanjutnya yang baik adalah mencoba algoritma random forest
+```{r warning=FALSE}
+RNGkind(sample.kind = "Rounding")
+set.seed(1)
+
+# Atur metode k-fold cross validation
+ctrl <- trainControl(method = "repeatedcv",
+                     number = 5, # Jumlah folds
+                     repeats = 7) # Jumlah repetisi pelaksanaan cross-validation
+
+# Awalnya, saya mengatur parameter number = 3 dan repeats = 5. Setelah saya atur number = 5 dan repeats = 7, performanya sedikit meningkat
+
+# Train model random forest kita dengan control k-fold yang sudah kita atur
+model_rf <- train(x = X_train, # Features
+                  y = y_train, # Target
+                  trControl = ctrl) # Control
+
+# Prediksi data test menggunakan model random forest kita
+pred_rf <- predict(model_rf, X_test)
+
+# Evaluasi model random forest kita menggunakan confusion matrix
+confusionMatrix(pred_rf, y_test)
+```
+> Model Random Forest saya mencapai Accuracy sekitar 78.88%, sedikit lebih baik dari model Decision Tree. Juga dengan sensitivitas yang kuat dalam mendeteksi kasus "insufficient".
+
+## **Algoritma Submission Evaluation**
+### Baca data test
+```{r}
+test_raw <- read.csv("data_input/data-test.csv")
+
+test_raw %>% head()
+```
+
+### Eksrak attribut yang dibutuhkan untuk melakukan prediksi
+```{r}
+test <- test_raw %>%
+  select(-coverage) %>%
+  mutate(src_area = as.factor(src_area),
+         datetime = ymd_hms(datetime),
+         wday = as.factor(wday(datetime, label = T)),
+         dhour = as.factor(hour(datetime)))
+
+test %>% head(4)
+```
+
+### Prediksi dengan 3 model kita
+```{r}
+test$coverage_nb <- predict(model_nb, test)
+test$coverage_dt <- predict(model_dt, test)
+test$coverage_rf <- predict(model_rf, test)
+
+test %>% head()
+```
+> Saya akan membandingkan performa setiap model pada submisi algoritma
+
+### Masukkan ke csv submission dan save untuk disubmit
+```{r}
+# Prediksi naive bayes
+submission <- test_raw %>% mutate(coverage = test$coverage_nb)
+write.csv(submission, "submission-ardian-nb.csv")
+
+# Predikisi decision tree
+submission <- test_raw %>% mutate(coverage = test$coverage_dt)
+write.csv(submission, "submission-ardian-dt.csv")
+
+# Prediksi random forest
+submission <- test_raw %>% mutate(coverage = test$coverage_rf)
+write.csv(submission, "submission-ardian-rf.csv")
+```
+> Setelah dibandingkan di submisi, model decission tree menjadi model terbaik dengan score berikut:
+>
+> * Accuracy: 82%
+> * Recall: 89%
+> * Precision: 81%
+> * Specificity: 74%
+
+## **AUC of ROC**
+Cara saya menjelaskan skor AUC dari kurva ROC adalah bahwa skor ini mencerminkan tingkat keyakinan model kita dalam prediksinya. Skor AUC ROC yang tinggi mengindikasikan bahwa model sangat yakin dan tidak ragu atas prediksinya. Sebagai bisnis atau perusahaan yang menggunakan model, kita ingin model kita memiliki keyakinan yang tinggi dalam prediksinya karena kita mengandalkannya untuk membuat keputusan. Kita tidak ingin memiliki model yang tidak yakin atau ragu dalam prediksinya. Inilah mengapa skor AUC dari kurva ROC menjadi ukuran penting untuk menentukan apakah sebuah model siap digunakan atau tidak.
+```{r}
+pred_dt_raw <- predict(model_dt, X_test, type = "prob")
+
+plotROC(pred_dt_raw[, 1], ifelse(y_test == "insufficient", 1, 0))
+```
+
+> Mantap. Kenapa? Karena semakin nilai AUC mendekati 1, maka model semakin confident atau yakin atas prediksi yang dihasilkan
+
+## **Interpretation**
+### Lime Method
+Untuk interpretasi menggunakan Lime method, kita tidak perlu melakukan pre-processing apa-apa, kita hanya perlu menjalankan code berikut agar Lime method bisa bekerja dengan baik:
+```{r}
+model_type.party <- function(x){
+  return("classification")
+}
+```
+Karena kita tidak memiliki banyak feature, kita akan meggunakan semua/tiga features, yaitu src_area, dhour, dan, wday. Dengan Lime Method, kita memiliki kemampuan untuk mengidentifikasi variabel yang berkontribusi terhadap hasil prediksi pada setiap kasus secara individu. Ini memungkinkan kita untuk memahami secara rinci bagaimana setiap variabel memengaruhi hasil prediksi untuk kasus tertentu.
+```{r}
+set.seed(1)
+
+explainer <- lime(x = X_train, model = model_dt)
+
+explanation <- explain(test %>% select(src_area, dhour, wday) %>% slice(1:4),
+                       labels = "insufficient",
+                       explainer = explainer,
+                       n_features = 3)
+
+explanation %>% plot_features()
+```
+
+> Pada 4 prediksi pertama bisa dilihat bahwa semuanya berada di area dan week day yang sama, yaitu sxk8, namun terdapat perbedaan prediksi berdasarkan jam, yang di mana model memprediksi area sxk3 memiliki jumlah driver yang tidak di week day tersebut pada jam 0-1, namun cukup pada jam 2-3.
+
+> Interpretasi ini cukup bagus, di mana kita bisa melihat bahwa sesignifikannya variable src_area, tetap saja variable lain memegang peran yang juga penting yang pada kasus 4 prediksi ini yaitu dhour
+
+### What is the difference between interpreting black box model with LIME and using an interpretable machine learning model?
+> LIME menjelaskan prediksi individu dari model black box secara lokal, sementara model yang mudah diinterpretasi memberikan insight transparan secara global. LIME berfokus pada pemahaman level instan, sementara model yang mudah diinterpretasi menjadi jelas karena struktur yang lebih sederhana.
+
+### How good is the explanation fit? What does it signify?
+> Nilai explanation fit sebesar 0.047, 0.037, 0.127, dan 0.086 menunjukkan kesesuaian yang relatif baik antara penjelasan yang dihasilkan oleh Lime dan prediksi aktual dari model decision tree saya untuk sufficiency jumlah pengemudi dalam area dan waktu tertentu. Nilai yang lebih tinggi mengindikasikan kesesuaian yang kuat antara penjelasan Lime dan hasil model, yang mencerminkan efektivitas dalam menjelaskan keputusan model secara individu.
+
+### What are the most and the least important factors for each observation?
+> Pada dua kasus pertama, variable yang paling penting terhadap hasil prediksi adalah src_area dan yang paling tidak penting adalah dhour, sementara pada kasus ketiga dan keempat adalah sebaliknya, yaitu kasus variabel yang paling penting adalah dhour dan yang paling tidak penting adalah src_area
+
+
+## **Conclusion**
+### Apakah tujuan saya tercapai?
+> Ya, saya berhasil menghasilkan model dengan performa yang memuaskan. Model yang dibuat memiliki akurasi yang baik (82%), serta sensitivitas (recall) yang tinggi (89%), dan presisi yang layak (81%). Selain itu, spesifisitas model juga sebesar 74%, yang menunjukkan kemampuannya dalam mengidentifikasi dengan baik kasus-kasus negatif.
+
+### Apakah masalah ini dapat diselesaikan dengan machine learning?
+> Ya, masalah prediksi kecukupan driver pada lokasi tertentu dan waktu tertentu merupakan masalah yang dapat diselesaikan dengan baik menggunakan machine learning. Model decision tree yang Anda gunakan telah memberikan hasil yang bagus dalam mengklasifikasikan kasus-kasus "insufficient" dan "sufficient" pada lokasi dan waktu tertentu.
+
+### Model apa yang Anda gunakan dan bagaimana performanya?
+> Model yang digunakan adalah Decision Tree Classifier. Model ini berhasil mencapai akurasi 82%, yang berarti sekitar 82% prediksi yang dilakukan oleh model sesuai dengan kenyataan. Performa yang lebih penting lagi terlihat dalam recall (89%), yang mengindikasikan kemampuan model dalam menangkap sebagian besar kasus "insufficient" yang sebenarnya. Presisi yang mencapai 81% juga menunjukkan bahwa ketika model memprediksi "insufficient," prediksinya cenderung benar. Spesifisitas sebesar 74% menunjukkan kemampuan model dalam mengidentifikasi "sufficient" dengan baik.
+
+### Apa potensi implementasi bisnis dari proyek Capstone saya?
+> Potensi implementasi bisnis dari proyek Capstone ini sangat menjanjikan. Dengan model ini, Anda dapat membantu mengoptimalkan alokasi driver pada lokasi dan waktu tertentu. Misalnya, dengan memprediksi kecukupan driver, perusahaan dapat mengambil langkah-langkah yang lebih baik dalam mengatur penjadwalan driver, menghindari kekurangan driver, dan meningkatkan efisiensi layanan. Hal ini dapat mengurangi ketidaknyamanan pelanggan akibat keterlambatan atau ketidaktersediaan driver. Selain itu, analisis lebih lanjut dari output model ini juga dapat memberikan wawasan berharga untuk pengambilan keputusan dalam mengoptimalkan sumber daya dan meningkatkan pengalaman pelanggan.

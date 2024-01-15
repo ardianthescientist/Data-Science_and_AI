@@ -1,0 +1,251 @@
+---
+title: 'High Risk Borrower/Debtor Detection with Machine Learning'
+author: 'Ardian the Great'
+date: "`r format(Sys.Date(), '%B %dth, %Y')`"
+output:
+  html_document:
+    theme: sandstone
+    highlight: zenburn
+    css: style.css
+    df_print: paged
+    toc: true
+    toc_float: true
+---
+This machine learning project is centered on the crucial task of detecting bad credit customers for credit card approval. The project's core focus lies in developing a robust predictive model that can effectively assess the creditworthiness of applicants. By successfully identifying potential high-risk customers, the model aims to enhance the credit approval process, minimize financial risks, and contribute to more informed decision-making in the realm of credit card applications.
+
+These are some valuable business advantages that are offered by the result of this project:
+
+* **Enhanced Risk Management**: Accurate identification of high-risk customers minimizes the potential for financial losses and defaults.
+* **Improved Approval Process**: Streamlined credit assessment leads to quicker and more precise credit decisions, enhancing customer satisfaction.
+* **Reduced Manual Workload**: Automated detection of bad credit customers reduces the need for manual review and speeds up the approval process.
+* **Enhanced Customer Relationships**: Identifying and declining bad credit customers prevents overextension of credit and fosters trust among good credit customers.
+* **Financial Stability**: Minimizing exposure to bad credit risks contributes to the overall financial health and stability of the lending institution.
+* **Regulatory Compliance**: Accurate risk assessment ensures compliance with regulatory requirements and prevents unauthorized lending.
+* **Optimal Resource Allocation**: Precise identification of bad credit customers allows for targeted collection efforts and resource allocation.
+* **Competitive Advantage**: Effective risk management sets the organization apart from competitors and builds a reputation for responsible lending practices.
+* **Improved Profitability**: Reduced bad debt and increased repayment rates lead to improved financial outcomes and higher profitability.
+* **Data-Driven Insights**: The analysis of credit data provides valuable insights into customer behavior, aiding in refining credit policies and strategies.
+
+**In short**: save the business more time, save the business more money, provide the business more insight, and make the business more money.
+
+#### Now let's jump into the coding process!
+
+## **Data Pre-processing**
+### Impot used libraries
+```{r message=FALSE}
+library(Ardian)
+library(dplyr)
+library(caret)
+library(inspectdf)
+library(partykit)
+library(e1071)
+```
+
+### Read the dataset
+```{r}
+risk <- read.csv("credit_card_approval.csv", stringsAsFactors = T)
+```
+
+### Inspect the data {.tabset}
+#### Top 6 rows
+```{r}
+risk %>% head()
+```
+
+#### Bottom 6 rows
+```{r}
+risk %>% tail()
+```
+
+### Check duplicated rows
+```{r}
+risk %>% duplicated() %>% any()
+```
+> Alhamdulillah there are no duplicated rows
+
+### Check missing values
+```{r}
+risk %>% anyNA()
+```
+> Alhamdulillah there are no missing values
+
+### Check data structure
+```{r}
+risk %>% glimpse()
+```
+> Some categorical columns are count as numerical, including the target variable. We'll handle that
+
+### Parse categorical columns
+I'm also gonna change the name of the target column to `bad_credit`
+```{r}
+risk <- risk %>%
+  mutate_at(vars(starts_with("FLAG"), TARGET), as.factor) %>%
+  rename(bad_credit = TARGET)
+
+risk %>% glimpse()
+```
+
+### Remove unneeded columns
+The *ID* column is just the record identifier that shouldn't be used for modelling so  gonna remove it
+```{r}
+risk <- risk %>% select(-ID)
+
+risk %>% glimpse()
+```
+> Cool! Now we're ready to explore the target variable and the features
+
+## **Exploratory Data Analysis**
+### Check target variable proportion
+```{r}
+risk$bad_credit %>% table() %>% barplot()
+```
+
+> Nuh uh. It's imbalanced! I will upsample the data!
+
+### Upsampling
+```{r}
+up_risk <- upSample(x = risk%>% select(-bad_credit),
+                     y = risk$bad_credit,
+                     yname = "bad_credit")
+
+up_risk$bad_credit %>% table() %>% barplot()
+```
+
+> Cool! It's balanced now!
+
+### Inspect categorical columns distributions
+```{r message=FALSE}
+up_risk %>% inspect_cat() %>% show_plot()
+```
+
+> FLAG_MOBIL column is all 1, I'm gonna remove it because it's useless, it won't provide any information for the model
+
+### Remove uninformative categorical columns
+```{r message=FALSE}
+risk <- risk %>% select(-nearZeroVar(.))
+
+risk %>% inspect_cat() %>% show_plot()
+```
+
+> Cool! We're now left with informative categorical columns. Now, let's explore the numerical columns!
+
+```{r}
+plotCatTargetbyCatCols <- function(data, target, position = "stack", flip = F) {
+  data <- data %>% select_if(is.factor)
+  
+  target_col <- as.character(substitute(target))
+  
+  for (col in colnames(data %>% select(-(!!sym(target_col))))) {
+    
+    colors <- c("#014C72", "skyblue", "#1572A1", "#6C9BCF", "#1E87C7", "#B0578D", "#FACBEA", "#FFE4D6", "#BA704F", "#D2E0FB",  "#435334", "#00854D", "#46DF9C", "#B9EDDD", "#B0A4A4", "#99A8B2", "#8294C4", "#9384D1", "#1C0347")
+    max_unique <- max(sapply(data, function(col) length(unique(col))))
+    
+    if (!flip){
+      table_df <- as.data.frame(table(data[[col]], data[[target_col]]))
+      colnames(table_df) <- c(col, target_col, "Count")
+      
+      gg <- ggplot(table_df, aes(y = Count, x = !!sym(target_col), fill = !!sym(col))) +
+        geom_bar(stat = "identity", position = position) +
+        labs(y = "Count", x = target_col, fill = col) +
+        theme_minimal() +
+        scale_fill_manual(values = rep_len(colors, max_unique)) +
+        ggtitle(paste(target_col, "by", col))
+    }
+    else{
+      table_df <- as.data.frame(table(data[[target_col]], data[[col]]))
+      colnames(table_df) <- c(target_col, col, "Count")
+      
+      gg <- ggplot(table_df, aes(x = Count, y = !!sym(col), fill = !!sym(target_col))) +
+        geom_bar(stat = "identity", position = position) +
+        labs(x = "Count", y = col, fill = target_col) +
+        theme_minimal() +
+        scale_fill_manual(values = rep_len(colors, max_unique)) +
+        ggtitle(paste(target_col, "by", col))
+    }
+    
+    print(gg)
+  }
+}
+
+plotCatTargetbyCatCols(up_risk, bad_credit, "stack", flip = F)
+```
+
+### Inspect numerical columns distributions
+```{r message=FALSE}
+for (col in up_risk %>% select_if(is.numeric) %>% colnames()) {
+  print(
+    ggplot(up_risk, aes(x = !!sym(col))) +
+    geom_histogram(aes(fill = after_stat(density)), col = "white", show.legend = F) +
+    labs(x = NULL,
+         y = "Density",
+         title = paste(col)) +
+    theme_minimal()
+  )
+}
+```
+
+> Alhamdulillah, all numerical columns are distributed normally. We can now move onto cross validation!
+
+## **Cross Validation**
+### Set training indices
+```{r}
+set.seed(1)
+
+indices <- createDataPartition(y = up_risk$bad_credit,
+                               p = 0.8,
+                               list = F)
+```
+
+### Split train & test
+```{r}
+train_data <- up_risk[indices, ]
+test_data <- up_risk[-indices, ]
+
+X_train <- train_data %>% select(-bad_credit)
+y_train <- train_data$bad_credit
+
+X_test <- test_data %>% select(-bad_credit)
+y_test <- test_data$bad_credit
+```
+
+## **Model Fitting, Evaluation, and Selection**
+### Naive Bayes Algorithm
+Because I have large data, I will start with Naive Bayes algorithm because it's fast like my Bugatti Chiron🏎️⚡
+```{r}
+model_nb <- naiveBayes(x = X_train,
+                       y = y_train,
+                       laplace = 1)
+```
+
+### Naive Bayes Model Evaluation
+```{r}
+pred_nb <- predict(model_nb, X_test)
+
+confusionMatrix(pred_nb, y_test, positive = "1")
+```
+> The Naive Bayes model exhibited outstanding `99% Accuracy`, `100% Sensitivity`, and `99% Specificity` in predicting bad credit customers. This is an amazing performace. We don't necessary need further model fitting, but I'm gonna try using Decision Tree Classifier algorithm because I believe I could get to 100% Accuracy!
+
+### Decision Tree Classifier Algorithm
+```{r}
+tree <- ctree_control(mincriterion = 0.9,
+                      minsplit = 5,
+                      minbucket = 3)
+
+model_dt <- ctree(formula = bad_credit ~ .,
+                  data = train_data,
+                  control = tree)
+```
+
+### Decision Tree Model Evaluation
+```{r}
+pred_dt <- predict(model_dt, X_test)
+
+confusionMatrix(pred_dt, y_test, positive = "1")
+```
+> I was right! `100% Accuracy!`
+>
+> The decision tree model achieved perfect Accuracy in detecting bad credit customers, making it the winner model of this project! Congratulations to `model_dt`!🥳🤩
+
+## **Conclusion**
+In conclusion, the final model has exhibited outstanding performance in predicting bad credit customers. With a perfect Accuracy of 100%, the model demonstrated exceptional precision in classifying both bad and not bad credit cases. The Sensitivity value of 100% further reinforces the model's efficacy in identifying all instances of bad credit customers, making it an ideal choice for capturing such cases. Moreover, the model's Specificity of 100% indicates its ability to accurately identify non-bad credit customers. In brief, the decision tree model's outstanding accuracy of 100% renders it suitable for real-world applications!
+
