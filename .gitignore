@@ -1,0 +1,27 @@
+# File extensions
+
+*.Rproj
+*.RData
+*.Rhistory
+*.mp4
+*.mov
+
+# Files
+
+CV 1 on 1 Session_ Ardian.docx
+CV-Ardian-Latest.pdf
+
+# Folders
+
+rsconnect/
+main_files/
+.Rproj.user/
+Datasets/
+Events/
+Library Cheat Sheets/
+Web Portfolio/
+Self-Learnings/
+Schools and Courses/
+Resources/
+My R Packages/
+
