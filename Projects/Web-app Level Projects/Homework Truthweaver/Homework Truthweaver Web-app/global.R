@@ -1,6 +1,7 @@
 library(shiny)
 library(shinydashboard)
 library(shinyjs)
+library(DT)
 
 library(dplyr)
 library(tm)
@@ -42,16 +43,15 @@ folder_to_table <- function(folder_path) {
   # Converting PDFs to text
   pdf_texts <- lapply(pdf_files, convert_pdf_to_text)
   
-  # Creating a data frame with file names and extracted text
+  # Creating a data frame for the extracted texts
   table_data <- data.frame(
-    file_name = paste(sapply(pdf_files, get_file_name), ".pdf", sep = ""),
     text = unlist(pdf_texts)
   )
   
   # Renaming the data frame rows with the file names
-  rownames(table_data) <- table_data$file_name
+  rownames(table_data) <- get_file_name(pdf_files)
   
-  return(table_data %>% select(text))
+  return(table_data)
 }
 
 clean_text <- function(text, as.corpus = T, lower = T, rm.number = T, rm.stopwords_english = T, rm.stopwords_bahasa = T, rm.punctuation = T, stem = T, rm.whitespace = T){
@@ -261,7 +261,7 @@ delete_files_in_www <- function() {
   files_to_remove <- list.files("www", full.names = TRUE)
   
   # Keep "foto-ian.jpg" and remove other files
-  files_to_remove <- setdiff(files_to_remove, c("www/foto-ian.jpg", "www/paper.html"))
+  files_to_remove <- setdiff(files_to_remove, c("www/foto-ian.jpg", "www/paper.html", "www/tester-documents.jpg"))
   
   if (length(files_to_remove) > 0) {
     file.remove(files_to_remove)

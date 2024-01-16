@@ -137,16 +137,15 @@ folder_to_table <- function(folder_path) {
   # Converting PDFs to text
   pdf_texts <- lapply(pdf_files, convert_pdf_to_text)
   
-  # Creating a data frame with file names and extracted text
+  # Creating a data frame for the extracted texts
   table_data <- data.frame(
-    file_name = paste(sapply(pdf_files, get_file_name), ".pdf", sep = ""),
     text = unlist(pdf_texts)
   )
   
   # Renaming the data frame rows with the file names
-  rownames(table_data) <- table_data$file_name
+  rownames(table_data) <- get_file_name(pdf_files)
   
-  return(table_data %>% select(text))
+  return(table_data)
 }
 ```
 
@@ -506,7 +505,7 @@ get_similar_works <- function(pair_similarity_ranking, document) {
 
 ### Function Test:
 ```{r}
-similar_works_19164410 <- get_similar_works(pair_similarity_ranking, "TI100_Asteroid_6364656667.pdf")
+similar_works_19164410 <- get_similar_works(pair_similarity_ranking, "TI100_Asteroid_6364656667")
 
 similar_works_19164410
 ```
@@ -559,8 +558,8 @@ get_intersect_and_distinct_words <- function(text_1, text_2) {
 
 ### Function Test:
 ```{r}
-text_1 <- df["TI100_Asteroid_6364656667.pdf", "text"]
-text_2 <- df["TI100_Meteor_5354555657.pdf", "text"]
+text_1 <- df["TI100_Asteroid_6364656667", "text"]
+text_2 <- df["TI100_Meteor_5354555657", "text"]
 
 get_intersect_and_distinct_words(text_1, text_2)
 ```
@@ -634,10 +633,10 @@ top_12_homeworks_bar_chart
 ```
 
 ## **Pair Word Clouds** {.tabset}
-This word clouds shows the distribution of intersect and distinct words between two documents.
+These word clouds shows the distribution of intersect and distinct words between two documents.
 ```{r}
-document_1 <- "TI100_Asteroid_6364656667.pdf"
-document_2 <- "TI100_Meteor_5354555657.pdf"
+document_1 <- "TI100_Asteroid_6364656667"
+document_2 <- "TI100_Meteor_5354555657"
 
 text_1 <- df[document_1, "text"]
 text_2 <- df[document_2, "text"]
