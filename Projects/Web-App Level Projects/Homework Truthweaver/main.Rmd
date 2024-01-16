@@ -1,13 +1,15 @@
 ---
-title: "🧝🏻‍♀️ Homework Truthweaver"
+title: "\U0001F9DD\U0001F3FB‍♀️ Homework Truthweaver"
 output:
   html_document:
     theme: sandstone
     css: style.css
     highlight: zenburn
     df_print: paged
-    toc: true
-    toc_float: true
+    toc: yes
+    toc_float: yes
+  pdf_document:
+    toc: yes
 ---
 <h5 style="text-align: center;">Ardian the Great</h5>
 <h5 style="text-align: center;">December 1st, 2023</h5>
@@ -21,7 +23,7 @@ In November 2023, my homework got rejected because I used ChatGPT. But, students
 ## **Project Idea**
 Homework Truthweaver is an innovative web application designed to tackle the challenges of identifying plagiarism and dishonesty in academic work. Inspired by a personal experience where a ChatGPT-generated homework was rejected while other instances of copying went unnoticed, this project aims to bring fairness and accuracy to the evaluation of academic assignments.
 
-## **Methodology**
+## **Methodologies**
 ### Cosine Similarity
 Cosine similarity is a metric used to measure the similarity between two vectors. In the context of text analysis, these vectors often represent the term frequency of words in documents. The cosine of the angle between the vectors is computed, resulting in a similarity score. A score of 1 indicates identical vectors, while 0 implies no similarity.
 
@@ -29,7 +31,7 @@ Cosine similarity is a metric used to measure the similarity between two vectors
 TF-IDF (Term Frequency-Inverse Document Frequency) is a numerical statistic that reflects the importance of a word in a document relative to a collection of documents (corpus). It is calculated by multiplying the term frequency (TF) with the inverse document frequency (IDF). TF measures how often a word appears in a document, while IDF assesses the rarity of a word across the entire corpus. TF-IDF is valuable in text analysis as it emphasizes words that are both frequent in a document and unique across the corpus, providing a more nuanced understanding of document content. TF-IDF weighting enhances cosine similarity by considering the importance of words in a document and across the entire corpus. Unlike regular cosine similarity, TF-IDF diminishes the impact of common words that appear frequently but are less informative. By highlighting unique and relevant terms, TF-IDF provides a more refined measure of document similarity, improving the accuracy of text analysis.
 
 ### N-Grams
-N-grams are contiguous sequences of n items from a given sample of text or speech. In the context of text analysis, these items are often words. Unigrams (1-grams) represent single words, bigrams (2-grams) are pairs of consecutive words, and trigrams (3-grams) consist of three-word sequences, and so on. N-grams capture local patterns and relationships between words, allowing for a more comprehensive analysis of language structure. (“this”, “is”, “an”, “example”, “of”, “one”, “gram”), (“this is”, “is an”, “an example”, “example of”, “of two”, “two grams”), and (“this is an”, “is an example”, “an example of”, “example of three”, “of three grams”)
+N-grams are contiguous sequences of n items from a given sample of text or speech. In the context of text analysis, these items are often words. Unigrams (1-grams) represent single words, bigrams (2-grams) are pairs of consecutive words, and trigrams (3-grams) consist of three-word sequences, and so on. N-grams capture local patterns and relationships between words, allowing for a more comprehensive analysis of language structure. (“this”, “is”, “an”, “example”, “of”, “one”, “gram”), (“this is”, “is an”, “an example”, “example of”, “of two”, “two grams”), and (“this is an”, “is an example”, “an example of”, “example of three”, “of three grams”).
 
 ## **Project Output**
 The output of this project is a Shiny Apps based Web App that can be used by anyone for analyzing document/homework similarities. And the goal is to identify instances of work dishonesty in homework grading using cosine similarity with TF-IDF weighting.
@@ -97,7 +99,7 @@ library(plotly)
 The `folder_to_table()` function serves the purpose of transforming a folder of PDF documents into a structured table, represented as a data frame. The resulting data frame comprises the pdf file names as row names, and a column, text, which contains the cleaned raw text extracted from the PDFs.
 
 ### Function Input:
-- ***folder_path***: This parameter specifies the path to the folder containing the PDF files to be processed. It should be provided as a character string
+- ***folder_path***: This parameter specifies the path to the folder containing the PDF files to be processed. It should be provided as a character string.
 
 ### Function Workflow:
 1. Extract the raw text
@@ -159,9 +161,9 @@ df
 The `clean_text()` function is designed to clean text data.
 
 ### Function Input:
-- ***text***: Raw text input
-- ***as_corpus***: If TRUE, the function will return the text in the form of a corpus
-- *Other conditional statements*: These are conditional statements specifying transformations to be applied to the text
+- ***text***: Raw text input.
+- ***as_corpus***: If TRUE, the function will return the text in the form of a corpus.
+- *Other conditional statements*: These are conditional statements specifying transformations to be applied to the text.
 
 ### Function Workflow:
 1. Transform the input text into a text corpus
@@ -662,27 +664,27 @@ Here is the link to the web-app: https://ardian.shinyapps.io/Homework-Truthweave
 ## **Overview** {.tabset}
 ### Input
 ```{r echo=FALSE}
-# knitr::include_graphics("1")
+knitr::include_graphics("1.png")
 ```
 
 ### Analytics
 ```{r echo=FALSE}
-# knitr::include_graphics("2")
+knitr::include_graphics("2.png")
 ```
 
 ### Analytics (contd)
 ```{r echo=FALSE}
-# knitr::include_graphics("3")
+knitr::include_graphics("3.png")
 ```
 
 ### Pair Analysis
 ```{r echo=FALSE}
-# knitr::include_graphics("4")
+knitr::include_graphics("4.png")
 ```
 
 ### Pair Analysis (contd)
 ```{r echo=FALSE}
-# knitr::include_graphics("5")
+knitr::include_graphics("5.png")
 ```
 
 ## **User Experience Flow**

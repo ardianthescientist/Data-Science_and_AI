@@ -260,6 +260,9 @@ get_intersect_and_distinct_words <- function(text_1, text_2) {
 delete_files_in_www <- function() {
   files_to_remove <- list.files("www", full.names = TRUE)
   
+  # Keep "foto-ian.jpg" and remove other files
+  files_to_remove <- setdiff(files_to_remove, c("www/foto-ian.jpg", "www/paper.html"))
+  
   if (length(files_to_remove) > 0) {
     file.remove(files_to_remove)
   }
