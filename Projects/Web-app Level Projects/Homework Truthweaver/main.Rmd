@@ -26,6 +26,7 @@ In November 2023, my homework got rejected because I used ChatGPT. But, students
 
 ## **Project Idea**
 Homework Truthweaver is an innovative web application designed to tackle the challenges of identifying plagiarism and dishonesty in academic work. Inspired by a personal experience where a ChatGPT-generated homework was rejected while other instances of copying and paraphrasing went unnoticed, this project aims to bring fairness and accuracy to the evaluation of academic assignments.
+
 ```{r echo=FALSE}
 knitr::include_graphics("paper images/project-idea.jpg")
 ```
@@ -275,7 +276,7 @@ The `get_wordcloud()` function is created to generate a word cloud that emphasiz
 ### Function Output:
 The output is a word cloud plot representing the input text/words.
 
-### Function Code
+### Function Code:
 ```{r}
 get_wordcloud <- function(words, palette, n_gram = 1){
   # Tokenizing the input string into individual words
@@ -302,7 +303,7 @@ get_wordcloud <- function(words, palette, n_gram = 1){
 }
 ```
 
-### Function Test {.tabset}
+### Function Test: {.tabset}
 
 #### Unigram
 ```{r warning=FALSE}
