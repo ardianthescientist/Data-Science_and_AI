@@ -3,12 +3,14 @@ function(input, output, session) {
   observeEvent(
     eventExpr = input$how_to_use,
     handlerExpr = {
-      showModal(
-        modalDialog(
-          HTML('<iframe width="560" height="315" src="https://www.youtube.com/embed/p03UfD3NI14?si=1yHxcbh-UJm5bGQ1&autoplay=1" title="YouTube video player" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen></iframe>'),
-          footer = modalButton(icon("right-from-bracket")),
-          easyClose = F,
-          size = "m"
+      return(
+        showModal(
+          modalDialog(
+            HTML('<iframe width="560" height="315" src="https://www.youtube.com/embed/p03UfD3NI14?si=1yHxcbh-UJm5bGQ1&autoplay=1" title="YouTube video player" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen></iframe>'),
+            footer = modalButton(icon("right-from-bracket")),
+            easyClose = F,
+            size = "m"
+          )
         )
       )
     }
@@ -24,16 +26,18 @@ function(input, output, session) {
   observeEvent(
     eventExpr = input$sample_documents,
     handlerExpr = {
-      showModal(
-        modalDialog(
-          title = "Try with these documents!",
-          tags$img(
-            src = "tester-documents.jpg",
-            width = "100%"
-          ),
-          easyClose = T,
-          fade = T,
-          footer = downloadButton("download_tester_documents", label = "Download")
+      return(
+        showModal(
+          modalDialog(
+            title = "Try with these documents!",
+            tags$img(
+              src = "tester-documents.jpg",
+              width = "100%"
+            ),
+            easyClose = T,
+            fade = T,
+            footer = downloadButton("download_tester_documents", label = "Download")
+          )
         )
       )
     }
@@ -122,27 +126,31 @@ function(input, output, session) {
   output$pair_similarity_density_chart <- renderPlot({
     color <- ifelse(pair_similarity_ranking()$Similarity %>% median() >= input$red_flag_threshold/100, "red", "green")
     
-    ggplot(pair_similarity_ranking(), aes(x = Similarity * 100)) +
-      geom_density(fill = color, color = color, alpha = 0.4) +
-      labs(x = "Similarity (%)",
-           y = NULL,
-           title = "Pair Similarity Density") +
-      theme_minimal() +
-      scale_x_continuous(labels = percent_format(scale = 1), limits = c(0, 100)) +
-      geom_vline(xintercept = input$red_flag_threshold, color = "black")
+    return(
+      ggplot(pair_similarity_ranking(), aes(x = Similarity * 100)) +
+        geom_density(fill = color, color = color, alpha = 0.4) +
+        labs(x = "Similarity (%)",
+             y = NULL,
+             title = "Pair Similarity Density") +
+        theme_minimal() +
+        scale_x_continuous(labels = percent_format(scale = 1), limits = c(0, 100)) +
+        geom_vline(xintercept = input$red_flag_threshold, color = "black")
+    )
   })
   
   output$homework_similarity_density_chart <- renderPlot({
     color <- ifelse(homework_similarity_ranking()$Highest_Similarity %>% median() >= input$red_flag_threshold/100, "red", "green")
     
-    ggplot(homework_similarity_ranking(), aes(x = Highest_Similarity * 100)) +
-      geom_density(fill = color, color = color, alpha = 0.4) +
-      labs(x = "Similarity (%)",
-           y = NULL,
-           title = "Homework Similarity Density") +
-      theme_minimal() +
-      scale_x_continuous(labels = percent_format(scale = 1), limits = c(0, 100)) +
-      geom_vline(xintercept = input$red_flag_threshold, color = "black")
+    return(
+      ggplot(homework_similarity_ranking(), aes(x = Highest_Similarity * 100)) +
+        geom_density(fill = color, color = color, alpha = 0.4) +
+        labs(x = "Similarity (%)",
+             y = NULL,
+             title = "Homework Similarity Density") +
+        theme_minimal() +
+        scale_x_continuous(labels = percent_format(scale = 1), limits = c(0, 100)) +
+        geom_vline(xintercept = input$red_flag_threshold, color = "black")
+    )
   })
   
   output$top_12_pairs_of_homeworks_bar_chart <- renderPlotly({
@@ -154,7 +162,7 @@ function(input, output, session) {
       theme_minimal() +
       theme(text = element_text(size = 8))
     
-    top_12_pairs_bar_chart %>% ggplotly(tooltip = "text")
+    return(top_12_pairs_bar_chart %>% ggplotly(tooltip = "text"))
   })
   
   output$top_12_homeworks_bar_chart <- renderPlotly({
@@ -166,29 +174,33 @@ function(input, output, session) {
       theme_minimal() +
       theme(text = element_text(size = 9))
     
-    top_12_homeworks_bar_chart %>% ggplotly(tooltip = "text")
+    return(top_12_homeworks_bar_chart %>% ggplotly(tooltip = "text"))
   })
   
   output$pair_similarity_ranking_table <- renderDataTable(
-    expr = datatable(
-      data = pair_similarity_ranking() %>% 
-        mutate(Similarity = Similarity_Formatted) %>% 
-        select(Documents, Similarity, Flag),
-      filter = "none",
-      selection = "none",
-      options = list(scrollX = T)
+    expr = return(
+      datatable(
+        data = pair_similarity_ranking() %>% 
+          mutate(Similarity = Similarity_Formatted) %>% 
+          select(Documents, Similarity, Flag),
+        filter = "none",
+        selection = "none",
+        options = list(scrollX = T)
+      )
     ),
     options = list(pageLength = 12)
   )
   
   output$homework_similarity_ranking_table <- renderDataTable(
-    expr = datatable(
-      data = homework_similarity_ranking() %>% 
-        mutate(Highest_Similarity_Detected = Highest_Similarity_Formatted) %>% 
-        select(Document, Highest_Similarity_Detected, Flag, Other_Document),
-      filter = "none",
-      selection = "none",
-      options = list(scrollX = T)
+    expr = return(
+      datatable(
+        data = homework_similarity_ranking() %>% 
+          mutate(Highest_Similarity_Detected = Highest_Similarity_Formatted) %>% 
+          select(Document, Highest_Similarity_Detected, Flag, Other_Document),
+        filter = "none",
+        selection = "none",
+        options = list(scrollX = T)
+      )
     ),
     options = list(pageLength = 12)
   )
@@ -239,7 +251,7 @@ function(input, output, session) {
   )
   
   output$info_boxes <- renderUI({
-    info_boxes()
+    return(info_boxes())
   })
   
   analytics <- eventReactive(
@@ -294,22 +306,8 @@ function(input, output, session) {
   )
   
   output$analytics <- renderUI({
-    analytics()
+    return(analytics())
   })
-  
-  pair_word_clouds <- eventReactive(
-    eventExpr = c(input$document_1, input$document_2),
-    valueExpr = {
-      if (!input$document_1 %>% trimws() %in% rownames(df()) | !input$document_2 %>% trimws() %in% rownames(df())){
-        return(NULL)
-      }
-      
-      document_1_distinct_words <- get_intersect_and_distinct_words(df()[input$document_1 %>% trimws(), "text"], df()[input$document_2 %>% trimws(), "text"])$document_1_distinct
-      intersect <- get_intersect_and_distinct_words(df()[input$document_1 %>% trimws(), "text"], df()[input$document_2 %>% trimws(), "text"])$intersect
-      document_2_distinct_words <- get_intersect_and_distinct_words(df()[input$document_1 %>% trimws(), "text"], df()[input$document_2 %>% trimws(), "text"])$document_2_distinct
-      
-    }
-  )
   
   output$document_1_distinct_word_clouds <- renderPlot({
     document_1_distinct_words <- get_intersect_and_distinct_words(df()[input$document_1 %>% trimws(), "text"], df()[input$document_2 %>% trimws(), "text"])$document_1_distinct
@@ -440,32 +438,34 @@ function(input, output, session) {
                 )
               }
             })
-          ),
+          )
         )
       )
     }
   )
   
   output$pair_analysis <- renderUI({
-    pair_analysis()
+    return(pair_analysis())
   })
   
   observeEvent(
     eventExpr = c(input$document_1, input$document_2),
     handlerExpr = {
-      if (input$document_1 %>% trimws() %in% rownames(df()) & input$document_2 %>% trimws() %in% rownames(df()) & input$document_1 %>% trimws() == input$document_2 %>% trimws()){
-        return(
-          showModal(
-            modalDialog(
-              title = h3("⚠️ Comparing the same document ⚠️") %>% column(width = 12, align = "center"),
-              easyClose = T,
-              footer = NULL,
-              p("Try comparing two different documents 😏") %>% column(width = 12, align = "center"),
-              tags$br()
-            )
+      if (!input$document_1 %>% trimws() %in% rownames(df()) | !input$document_2 %>% trimws() %in% rownames(df()) | !input$document_1 %>% trimws() == input$document_2 %>% trimws()){
+        return(NULL)
+      }
+      
+      return(
+        showModal(
+          modalDialog(
+            title = h3("⚠️ Comparing the same document ⚠️") %>% column(width = 12, align = "center"),
+            easyClose = T,
+            footer = NULL,
+            p("Try comparing two different documents 😏") %>% column(width = 12, align = "center"),
+            tags$br()
           )
         )
-      }
+      )
     }
   )
   
@@ -486,8 +486,6 @@ function(input, output, session) {
       )
     )
   })
-  
-  
   
   onStop(delete_files_in_www)
 }
