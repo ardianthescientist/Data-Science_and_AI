@@ -18,7 +18,7 @@ dashboardPage(
             width = 12,
             actionLink("sample_documents", "Need sample documents to try?") %>% div(style = "float: left; width: 50%;"),
             actionLink("how_to_use", "How to use?") %>% div(style = "text-align: right; margin-top: auto;"),
-            fileInput("homeworks", "Choose files:", multiple = T, accept = ".pdf", ),
+            fileInput("homeworks", "Choose files:", multiple = T, accept = ".pdf"),
             sliderInput("red_flag_threshold", "Set red flag threshold:", min = 0, max = 100, value = 50, width = "20%", post = "%") %>% column(width = 12, align = "center"),
             tags$hr() %>% column(width = 12),
             actionButton("conjure", "🪄 Conjure", width = "100") %>% column(width = 12, align = "center")
