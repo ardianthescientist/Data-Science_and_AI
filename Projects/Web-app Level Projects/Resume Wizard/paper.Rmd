@@ -334,7 +334,7 @@ rank_resumes <- function(ideal_criteria, resumes_df) {
   # Creating the ranking data frame
   ranking_df <- resumes_df %>% 
     rowwise() %>% 
-           # Extracting the matching criteria
+    # Extracting the matching criteria
     mutate(Matching_Criteria = intersect(tokenize_ngrams_by_range(PDF_Text, max_n_gram), tokenized_ideal_criteria) %>% paste(collapse = ", "),
            # Calculating the matching percentage
            Matching_Percentage = ifelse(Matching_Criteria == "", 0, round(length(unlist(str_split(Matching_Criteria, ", "))) / length(tokenized_ideal_criteria), 2)),
@@ -352,9 +352,8 @@ rank_resumes <- function(ideal_criteria, resumes_df) {
 ```{r}
 ideal_criteria <- "AutoCAD, Photoshop, Illustrator, SketchUp, Lumion, InDesign, CorelDRAW, SolidWorks, Blender, Revit, Rhinoceros (Rhino), Cinema 4D, Premiere Pro, Lightroom, Maya, ZBrush, Dreamweaver, XD, Figma, QuarkXPress, Spark, Procreate, Inkscape, Unity3D"
 
-ranking <- rank_resumes(ideal_criteria, pdf_df)
+ranking %>% mutate(Rank = row_number())
 
-ranking
 ```
 
 ## **Resume Clustering Function**
@@ -447,6 +446,18 @@ get_wordcloud(resume_words_cleaned %>% str_split(" ") %>% unlist(), "Blues", sca
 ```
 
 > 😎
+
+```{r}
+tes <- c(3, 2, 4)
+print(tes[order(tes)])
+```
+
+```{r}
+test <- "hallo ini contoh sala h satu text"
+
+tokenize_ngrams(test, n = 2, n_min = 1) %>% unlist()
+```
+
 
 # Shiny Web-app
 <p style="text-align: center;"><a href="https://ardian.shinyapps.io/Homework-Truthweaver/">Here</a> is the link to the web-app.</p>
