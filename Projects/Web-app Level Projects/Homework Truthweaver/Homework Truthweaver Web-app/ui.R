@@ -27,7 +27,7 @@ dashboardPage(
         
         # ----Quick overview----
         fluidRow(
-          uiOutput("quick_overview")
+          uiOutput("quick_talk")
         ),
         
         # ----Info boxes---

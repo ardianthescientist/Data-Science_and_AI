@@ -6,10 +6,11 @@ function(input, output, session) {
       return(
         showModal(
           modalDialog(
-            HTML('<iframe width="560" height="315" src="https://www.youtube.com/embed/p03UfD3NI14?si=1yHxcbh-UJm5bGQ1&autoplay=1" title="YouTube video player" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen></iframe>'),
+            style = "display: flex; justify-content: center;",
             footer = modalButton(icon("right-from-bracket")),
             easyClose = F,
-            size = "m"
+            size = "l",
+            HTML('<iframe width="840" height="472.5"  src="https://www.youtube.com/embed/ZGB0_Oj28mc?si=3dQm7sIMT-dWD0PJ&autoplay=1" title="YouTube video player" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen></iframe>')
           )
         )
       )
@@ -469,7 +470,7 @@ function(input, output, session) {
     }
   )
   
-  output$quick_overview <- renderUI({
+  output$quick_talk <- renderUI({
     if (input$conjure > 0 && !df() %>% is.null()){
       return(NULL)
     } 
@@ -481,9 +482,10 @@ function(input, output, session) {
         box(
           width = 7,
           style = "display: flex; justify-content: center;",
-          HTML('<iframe width="840" height="472" src="https://www.youtube.com/embed/ZGB0_Oj28mc?si=3dQm7sIMT-dWD0PJ&autoplay=1" title="YouTube video player" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen></iframe>')
+          HTML('<iframe width="840" height="472" src="https://www.youtube.com/embed/p03UfD3NI14?si=1yHxcbh-UJm5bGQ1&autoplay=1" title="YouTube video player" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen></iframe>')
         )
       )
+      
     )
   })
   
