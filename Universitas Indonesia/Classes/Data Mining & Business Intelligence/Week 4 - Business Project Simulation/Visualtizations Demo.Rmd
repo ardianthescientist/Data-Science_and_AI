@@ -1,0 +1,356 @@
+```{r message=FALSE}
+library(tidyverse)
+```
+
+```{r}
+# Load necessary library
+library(ggplot2)
+
+# Create dummy data
+dummy_sales_profit <- data.frame(
+  Month = as.Date(c("2022-01-01", "2022-02-01", "2022-03-01", "2022-04-01", "2022-05-01")),
+  Mean_Sales = c(5000, 6000, 7000, 8000, 9000),
+  Mean_Profit = c(2000, 2500, 3000, 3500, 4000)
+)
+
+# Plot mean sales and profit
+ggplot(data = dummy_sales_profit) +
+  geom_line(aes(x = Month, y = Mean_Sales, color = "Mean Sales"), size = 1) +
+  geom_line(aes(x = Month, y = Mean_Profit, color = "Mean Profit"), size = 1) +
+  scale_color_manual(values = c("Mean Sales" = "blue", "Mean Profit" = "green"),
+                     name = "Indicator") +
+  labs(title = "Mean Sales and Profit Over Months",
+       x = "Month",
+       y = "Amount") +
+  theme_minimal() +
+  scale_y_continuous(labels = scales::dollar_format(prefix = "$")) +
+```
+
+```{r}
+# Load necessary library
+library(ggplot2)
+
+# Create dummy data
+dummy_sales_profit <- data.frame(
+  Month = rep(seq(as.Date("2022-01-01"), by = "month", length.out = 12), 1),
+  Sales = c(
+    5000,  # January
+    6000,  # February
+    7000,  # March
+    8000,  # April
+    9000,  # May
+    9500,  # June
+    10000, # July
+    10500, # August
+    11000, # September
+    11500, # October
+    12000, # November
+    12500  # December
+  ),
+  Profit = c(
+    2000,  # January
+    2500,  # February
+    3000,  # March
+    3500,  # April
+    4000,  # May
+    4200,  # June
+    4500,  # July
+    4800,  # August
+    5100,  # September
+    5400,  # October
+    5700,  # November
+    6000   # December
+  )
+)
+
+# Plot sales and profit
+ggplot(data = dummy_sales_profit, aes(x = Month)) +
+  geom_line(aes(y = Sales, color = "Sales"), size = 1) +
+  geom_line(aes(y = Profit, color = "Profit"), size = 1) +
+  scale_color_manual(values = c("Sales" = "blue", "Profit" = "green"),
+                     name = NULL) +
+  labs(title = "Sales and Profit Over 2024",
+       x = NULL,
+       y = NULL) +
+  theme_minimal() +
+  scale_x_date(date_labels = "%b", date_breaks = "1 month") +
+  scale_y_continuous(labels = scales::dollar_format(prefix = "$")) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+```{r}
+# Load necessary libraries
+library(dplyr)
+library(ggplot2)
+
+# Create dummy data for total daily visitors
+dummy_monthly_visitors <- data.frame(
+  Month = rep(seq(as.Date("2022-01-01"), by = "month", length.out = 12), 1),
+  Total_Monthly_Visitors = dummy_sales_profit$Sales/5
+)
+
+# Plot total monthly visitors for the year
+dummy_monthly_visitors %>% 
+  ggplot(aes(x = Month, y = Total_Monthly_Visitors)) +
+  geom_line(color = "green") +
+  labs(title = "Monthly Visitors over 2024",
+       x = NULL,
+       y = NULL) +
+  theme_minimal() +
+  scale_x_date(date_labels = "%b", date_breaks = "1 month") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+
+```{r}
+# Load necessary library
+library(ggplot2)
+
+# Create dummy data for social media engagement
+social_media_data <- data.frame(
+  Month = seq(as.Date("2022-01-01"), by = "month", length.out = 12),
+  Likes = round(runif(12, 1000, 5000)),
+  Comments = round(runif(12, 100, 1000)),
+  Mentions = round(runif(12, 50, 500)),
+  Follows = round(runif(12, 200, 1000))
+)
+
+# Reshape data for plotting
+social_media_data_long <- tidyr::pivot_longer(social_media_data, -Month, names_to = "Metric", values_to = "Count")
+
+# Plot line chart
+ggplot(data = social_media_data_long, aes(x = Month, y = Count, color = Metric)) +
+  geom_line(size = 1) +
+  labs(title = "Social Media Engagement Over 2024",
+       x = NULL,
+       y = NULL,
+       color = NULL) +
+  scale_color_manual(values = c("Likes" = "yellow", "Comments" = "green", "Mentions" = "red", "Follows" = "blue"),
+                     name = NULL) +
+  theme_minimal() +
+  scale_x_date(date_labels = "%b", date_breaks = "1 month") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+```{r}
+# Sample review phrases
+positive_reviews <- c("Great coffee", "Perfect taste", "Perfect taste", "Great coffee", "Great coffee", "Friendly staff", "Cozy atmosphere", "Cozy atmosphere", "Best coffee in town", "Love this place", "Excellent service", "Delicious pastries", "Highly recommended", "Highly Recommended", "Amazing experience", "Fantastic coffee selection")
+negative_reviews <- c("Disappointing coffee", "Rude service", "Overpriced drinks", "Not impressed", "Unfriendly staff", "Poor quality", "Long wait times", "Lacks variety", "Would not recommend", "Dirty environment", "Overpriced drinks", "Overpriced drinks", "Not impressed", "Long wait times")
+
+# Create review data with positive flag
+review_data <- tibble(
+  Review = c(positive_reviews, negative_reviews),
+  Positive = ifelse(tolower(Review) %in% tolower(positive_reviews), 1, 0),
+  rating = ifelse(Positive == 1, sample(4:5, sum(Positive == 1), replace = TRUE), sample(1:3, sum(Positive == 1), replace = TRUE))
+)
+
+# Print the review data
+review_data
+```
+```{r}
+# Load necessary libraries
+library(ggplot2)
+
+# Plot distribution of ratings with blue gradient
+ggplot(review_data, aes(x = factor(rating))) +
+  geom_bar(aes(fill = ..count..)) +
+  labs(title = "Distribution of Ratings",
+       x = NULL,
+       y = NULL) +
+  theme_minimal() +
+  scale_fill_gradient(high = "#B3E5FC", low = "#0D47A1", guide = FALSE)
+
+```
+
+```{r}
+# Load necessary libraries
+library(dplyr)
+library(lubridate)
+
+# Set seed for reproducibility
+set.seed(42)
+
+# Generate dummy data for average monthly rating for a year
+dummy_ratings <- tibble(
+  Date = seq(as.Date("2022-01-01"), by = "month", length.out = 12),
+  Rating = runif(12, min = 1, max = 5)  # Generating random ratings between 1 and 5
+)
+
+# Load necessary library
+library(ggplot2)
+
+# Plot line chart for average monthly rating
+line_chart <- ggplot(dummy_ratings, aes(x = Date, y = Rating)) +
+  geom_line(color = "blue") +
+  geom_point(color = "blue") +
+  labs(title = "Monthly Mean Rating over 2024",
+       x = NULL,
+       y = "Rating") +
+  theme_minimal() +
+  scale_x_date(date_labels = "%b", date_breaks = "1 month") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+# Print the line chart
+print(line_chart)
+
+```
+
+
+```{r}
+library(wordcloud)
+get_wordcloud <- function(tokens, scale = c(2, 0), normalize_higher_ngrams = F, color = c("#9BFF72", "#278700")) {
+  
+  # Creating a data frame of tokens and count their occurrences.
+  words <- data.frame(token = tokens) %>%
+    count(token, sort = TRUE) %>% 
+    na.omit()
+  
+  # Calculate the tf-idf weight of each token
+  if (normalize_higher_ngrams){
+    words <- words %>% rowwise() %>% mutate(n = n * length(unlist(str_split(token, " "))) + 1)
+  }
+  
+  # Generating a word cloud with specified settings, scaling word size by frequency
+  words %>%
+    with(
+      wordcloud(
+        words = token,
+        random.order = FALSE,
+        color = colorRampPalette(color)(length(unique(words$token))),
+        min.freq = 1,
+        scale = scale,
+        rot.per = 0,
+        freq = n
+      )
+    )
+}
+```
+
+```{r}
+positive_tokens <- review_data %>% filter(Positive == 1) %>% select(Review) %>% unlist()
+negative_tokens <- review_data %>% filter(Positive == 0) %>% select(Review) %>% unlist()
+
+get_wordcloud(positive_tokens)
+get_wordcloud(negative_tokens, color = c("#FC9C9C", "#870000"))
+```
+
+```{r}
+# Calculate percentages
+total_reviews <- sum(positive_distribution)
+percentages <- round(positive_distribution / total_reviews * 100, 1)
+
+# Create a new dataframe with percentages
+pie_data_with_percentages <- data.frame(
+  Review = names(positive_distribution),
+  Positivity = positive_distribution,
+  Percentage = paste(percentages, "%", sep = "")
+)
+
+# Create a pie chart using ggplot2 with percentages as labels
+pie_data_with_percentages %>% 
+  ggplot(aes(x = "", y = Positivity.., fill = Review, label = Percentage)) +
+  geom_bar(stat = "identity", width = 1) +
+  coord_polar("y", start = 0) +
+  geom_text(size = 4, position = position_stack(vjust = 0.5)) +  # Add text labels
+  labs(title = "Distribution of Positive and Negative Reviews") +
+  scale_fill_manual(values = c("salmon", "lightgreen"), labels = c("Positive", "Negative")) +
+  theme_void() +
+  theme(legend.title = element_blank())  # Remove legend title
+
+```
+
+
+
+```{r}
+# Load necessary libraries
+library(ggplot2)
+library(dplyr)
+library(lubridate)
+library(stringr)
+
+# Create dummy data for monthly positive and negative reviews
+set.seed(42)  # Set seed for reproducibility
+months <- seq(as.Date("2022-01-01"), by = "month", length.out = 12)
+positive_reviews <- sample(50:100, 12, replace = TRUE)  # Generate random positive reviews
+negative_reviews <- sample(20:70, 12, replace = TRUE)   # Generate random negative reviews
+
+# Create a dataframe for positive and negative reviews
+reviews_data <- data.frame(
+  Month = months,
+  Positive_Reviews = positive_reviews,
+  Negative_Reviews = negative_reviews
+)
+
+# Melt the dataframe into long format for ggplot
+reviews_data_long <- reviews_data %>%
+  pivot_longer(cols = c(Positive_Reviews, Negative_Reviews),
+               names_to = "Review_Type",
+               values_to = "Count")
+
+# Replace underscore with space in legend name
+reviews_data_long$Review_Type <- str_replace(reviews_data_long$Review_Type, "_", " ")
+
+# Plot line chart for monthly positive and negative reviews
+lines_chart <- ggplot(reviews_data_long, aes(x = Month, y = Count, color = Review_Type, group = Review_Type)) +
+  geom_line() +
+  labs(title = "Monthly Positive and Negative Reviews over 2024",
+       x = NULL,
+       y = NULL,
+       color = NULL) +
+  scale_x_date(date_labels = "%b", date_breaks = "1 month") +
+  theme_minimal()
+
+# Print the line chart
+print(lines_chart)
+
+
+```
+
+```{r}
+# Load necessary libraries
+library(ggplot2)
+library(dplyr)
+library(lubridate)
+
+# Generate dummy data for monthly average customer time spent in store
+set.seed(123)  # Set seed for reproducibility
+months <- seq(as.Date("2022-01-01"), by = "month", length.out = 12)
+avg_time_spent <- runif(12, min = 20, max = 60)  # Generate random average time spent values
+
+# Create a dataframe for monthly average customer time spent in store
+time_data <- data.frame(
+  Month = months,
+  Avg_Time_Spent = avg_time_spent
+)
+
+# Plot line chart for monthly average customer time spent in store
+ggplot(time_data, aes(x = Month, y = Avg_Time_Spent)) +
+  geom_line(color = "blue") +
+  geom_point(color = "blue") +
+  labs(title = "Monthly Average Customer Time Spent in Store",
+       x = NULL,
+       y = "Average Time Spent (minutes)") +
+  scale_x_date(date_labels = "%b", date_breaks = "1 month") +
+  theme_minimal()
+
+```
+
+```{r}
+# Load necessary libraries
+library(ggplot2)
+
+# Example data of customer time spent in store
+customer_time <- c(20, 25, 30, 40, 35, 30, 45, 50, 55, 60, 65, 70, 80, 85, 90)
+
+# Create a density plot
+ggplot(data.frame(Time = customer_time), aes(x = Time)) +
+  geom_density(alpha = 0.7, color = "lightblue", fill = "skyblue" ) +
+  labs(title = "Density of Customer Time Spent in Store",
+       x = "Time Spent (minutes)",
+       y = "Density") +
+  theme_minimal()
+```
+
+
+
+
